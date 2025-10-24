@@ -1,0 +1,183 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Version Comparison Dashboard - OCS</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .card {
+            box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+            border: 1px solid rgba(0, 0, 0, 0.125);
+            margin-bottom: 1.5rem;
+        }
+        .card-header {
+            background-color: #007bff;
+            color: white;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.125);
+        }
+        .table th {
+            background-color: #f8f9fa;
+            border-top: none;
+        }
+        .navbar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-chart-line me-2"></i>
+                Version Comparison Dashboard
+            </a>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-12">
+                <div class="alert alert-info">
+                    <h4 class="alert-heading">
+                        <i class="fas fa-info-circle me-2"></i>
+                        Dashboard Overview
+                    </h4>
+                    <p>This dashboard compares coaching bot versions based on session metrics, annotations, and user engagement.</p>
+                    <hr>
+                    <p class="mb-0">
+                        <strong>Generated:</strong> 2025-10-22 22:05:38
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Summary Metrics by Version</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th>Coaching Bot Version</th>
+                                        <th># Sessions</th>
+                                        <th># Annotated Sessions</th>
+                                        <th>Refrigeration Examples (%)</th>
+                                        <th>Median Human Words per Session</th>
+                                        <th>Average Session Rating</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    
+                            <tr>
+                                <td><strong>Coaching bot V3</strong></td>
+                                <td>3451</td>
+                                <td>0</td>
+                                <td>0.0%</td>
+                                <td>34.0</td>
+                                <td>4.81</td>
+                            </tr>
+            
+                            <tr>
+                                <td><strong>Coaching bot V4</strong></td>
+                                <td>2525</td>
+                                <td>713</td>
+                                <td>3.8%</td>
+                                <td>30.0</td>
+                                <td>4.85</td>
+                            </tr>
+            
+                            <tr>
+                                <td><strong>Coaching bot V5</strong></td>
+                                <td>0</td>
+                                <td>0</td>
+                                <td>0.0%</td>
+                                <td>0.0</td>
+                                <td>0.00</td>
+                            </tr>
+            
+                            <tr>
+                                <td><strong>Coaching bot V6</strong></td>
+                                <td>1758</td>
+                                <td>1720</td>
+                                <td>0.6%</td>
+                                <td>131.0</td>
+                                <td>4.66</td>
+                            </tr>
+            
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Definitions</h3>
+                    </div>
+                    <div class="card-body">
+                        <h5>Coaching Bot Versions</h5>
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Version</th>
+                                    <th>Experiment Name</th>
+                                    <th>Version Range</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>Coaching bot V3</strong></td>
+                                    <td>ECD Control Bot - Nigeria - Connect Experiments</td>
+                                    <td>All versions</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Coaching bot V4</strong></td>
+                                    <td>ECD Coach - (Nigeria Experiments) V4</td>
+                                    <td>23 and above</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Coaching bot V5</strong></td>
+                                    <td>ECD Coach - (Nigeria Experiments) V6</td>
+                                    <td>1 to 4</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Coaching bot V6</strong></td>
+                                    <td>ECD Coach - (Nigeria Experiments) V6</td>
+                                    <td>5 and above</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        
+                        <h5 class="mt-4">Metric Definitions</h5>
+                        <ul>
+                            <li><strong>Sessions:</strong> Bot-initiated interactions excluding split sessions</li>
+                            <li><strong>Annotated Sessions:</strong> Sessions with non-version tags</li>
+                            <li><strong>Refrigeration Examples:</strong> Sessions with "refrigerator_example" tag</li>
+                            <li><strong>Median Human Words:</strong> Median word count of user messages per session</li>
+                            <li><strong>Average Session Rating:</strong> Mean rating (1-5) from user feedback</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
+        

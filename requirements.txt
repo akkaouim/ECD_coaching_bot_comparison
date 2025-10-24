@@ -1,0 +1,15 @@
+# Version Comparison Dashboard Requirements
+# 
+# This dashboard uses the same requirements as the main OCS Dashboard project.
+# The requirements are listed in the parent directory's requirements.txt file.
+#
+# Core dependencies:
+# - Python 3.8+
+# - Standard library modules (json, pathlib, datetime, statistics)
+# - Bootstrap 5.3.0 (CDN)
+# - Font Awesome 6.0.0 (CDN)
+#
+# No additional Python packages are required beyond the main project requirements.
+#
+# For the main project requirements, see:
+# ../requirements.txt

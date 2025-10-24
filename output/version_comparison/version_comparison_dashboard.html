@@ -1,0 +1,599 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Version Comparison Dashboard - OCS</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .card {
+            box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+            border: 1px solid rgba(0, 0, 0, 0.125);
+            margin-bottom: 1.5rem;
+        }
+        .card-header {
+            background-color: #007bff;
+            color: white;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.125);
+        }
+        .table th {
+            background-color: #f8f9fa;
+            border-top: none;
+        }
+        .table-dark th {
+            background-color: #343a40 !important;
+            color: #ffffff !important;
+            font-weight: bold;
+        }
+        .navbar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-chart-line me-2"></i>
+                Version Comparison Dashboard
+            </a>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-12">
+                <div class="alert alert-info">
+                    <h4 class="alert-heading">
+                        <i class="fas fa-info-circle me-2"></i>
+                        Dashboard Overview
+                    </h4>
+                    <p>This dashboard compares coaching bot versions based on session metrics, annotations, and user engagement.</p>
+                    <hr>
+                    <p class="mb-0">
+                        <strong>Generated:</strong> 2025-10-24 13:17:40
+                    </p>
+                </div>
+            </div>
+        </div>
+
+
+
+        <!-- Tab Navigation -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <ul class="nav nav-tabs" id="dashboardTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="summary-tab" data-bs-toggle="tab" data-bs-target="#summary" type="button" role="tab" aria-controls="summary" aria-selected="true">Summary</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="performance-tab" data-bs-toggle="tab" data-bs-target="#performance" type="button" role="tab" aria-controls="performance" aria-selected="false">Performance</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="engagement-tab" data-bs-toggle="tab" data-bs-target="#engagement" type="button" role="tab" aria-controls="engagement" aria-selected="false">User Engagement</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="definitions-tab" data-bs-toggle="tab" data-bs-target="#definitions" type="button" role="tab" aria-controls="definitions" aria-selected="false">Definitions</button>
+                    </li>
+                </ul>
+                
+                <div class="tab-content" id="dashboardTabContent">
+                    <!-- Summary Tab -->
+                    <div class="tab-pane fade show active" id="summary" role="tabpanel" aria-labelledby="summary-tab">
+                     <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Summary Metrics by Version</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th>Coaching Bot Version</th>
+                                        <th># Sessions</th>
+                                        <th># Annotated Sessions</th>
+                                        <th>Refrigeration Examples (%)</th>
+                                        <th>Median Human Words per Session</th>
+                                        <th>Average Session Rating</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    
+                            <tr>
+                                <td><strong>Coaching bot V3</strong></td>
+                                <td>3539</td>
+                                <td>0</td>
+                                <td>0.0%</td>
+                                <td>35.0</td>
+                                <td>4.81</td>
+                            </tr>
+            
+                            <tr>
+                                <td><strong>Coaching bot V4</strong></td>
+                                <td>2473</td>
+                                <td>152</td>
+                                <td>34.2%</td>
+                                <td>33.0</td>
+                                <td>4.86</td>
+                            </tr>
+            
+                            <tr>
+                                <td><strong>Coaching bot V5</strong></td>
+                                <td>1295</td>
+                                <td>61</td>
+                                <td>37.7%</td>
+                                <td>151.0</td>
+                                <td>4.53</td>
+                            </tr>
+            
+                            <tr>
+                                <td><strong>Coaching bot V6</strong></td>
+                                <td>1202</td>
+                                <td>3</td>
+                                <td>33.3%</td>
+                                <td>119.0</td>
+                                <td>4.69</td>
+                            </tr>
+            
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+                    </div>
+                    
+                    <!-- Performance Tab -->
+                    <div class="tab-pane fade" id="performance" role="tabpanel" aria-labelledby="performance-tab">
+                        <div class="row mt-4">
+                            <div class="col-12">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h3>Refrigerator Example Rate by Method and Version</h3>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="table-responsive">
+                                            <table class="table table-striped table-hover">
+                                                <thead class="table-dark">
+                                                    <tr>
+                                                        <th>Method</th>
+                                                        <th>Coaching bot V3</th><th>Coaching bot V4</th><th>Coaching bot V5</th><th>Coaching bot V6</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <tr><td><strong>Scenario</strong></td><td>0.0%</td><td>100.0%</td><td>100.0%</td><td>0.0%</td></tr><tr><td><strong>Microlearning</strong></td><td>0.0%</td><td>69.8%</td><td>100.0%</td><td>0.0%</td></tr><tr><td><strong>Microlearning vaccines</strong></td><td>0.0%</td><td>0.0%</td><td>66.7%</td><td>0.0%</td></tr><tr><td><strong>Motivational interviewing</strong></td><td>0.0%</td><td>57.1%</td><td>100.0%</td><td>100.0%</td></tr><tr><td><strong>Visit check in</strong></td><td>0.0%</td><td>100.0%</td><td>100.0%</td><td>0.0%</td></tr><tr><td><strong>Unknown</strong></td><td>0.0%</td><td>0.0%</td><td>0.0%</td><td>0.0%</td></tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mt-4">
+                            <div class="col-12">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h3>Average FLW Score by Method and Version</h3>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="table-responsive">
+                                            <table class="table table-striped table-hover">
+                                                <thead class="table-dark">
+                                                    <tr>
+                                                        <th>Method</th>
+                                                        <th>Coaching bot V3</th><th>Coaching bot V4</th><th>Coaching bot V5</th><th>Coaching bot V6</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <tr><td><strong>Scenario</strong></td><td>-</td><td>4.81</td><td>4.49</td><td>4.67</td></tr><tr><td><strong>Microlearning</strong></td><td>-</td><td>4.85</td><td>4.48</td><td>4.69</td></tr><tr><td><strong>Microlearning vaccines</strong></td><td>-</td><td>-</td><td>4.49</td><td>4.66</td></tr><tr><td><strong>Motivational interviewing</strong></td><td>-</td><td>4.86</td><td>4.65</td><td>4.70</td></tr><tr><td><strong>Visit check in</strong></td><td>5.00</td><td>4.93</td><td>4.61</td><td>4.74</td></tr><tr><td><strong>Unknown</strong></td><td>4.81</td><td>-</td><td>-</td><td>5.00</td></tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- User Engagement Tab -->
+                    <div class="tab-pane fade" id="engagement" role="tabpanel" aria-labelledby="engagement-tab">
+                        <div class="row mt-4">
+                            <div class="col-12">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h3>Median User Words per Session by Method and Version</h3>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="table-responsive">
+                                            <table class="table table-striped table-hover">
+                                                <thead class="table-dark">
+                                                    <tr>
+                                                        <th>Method</th>
+                                                        <th>Coaching bot V3</th><th>Coaching bot V4</th><th>Coaching bot V5</th><th>Coaching bot V6</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <tr><td><strong>Scenario</strong></td><td>0.0</td><td>85.0</td><td>150.5</td><td>128.5</td></tr><tr><td><strong>Microlearning</strong></td><td>0.0</td><td>76.0</td><td>122.0</td><td>89.0</td></tr><tr><td><strong>Microlearning vaccines</strong></td><td>0.0</td><td>0.0</td><td>93.5</td><td>90.5</td></tr><tr><td><strong>Motivational interviewing</strong></td><td>0.0</td><td>81.0</td><td>167.5</td><td>129.0</td></tr><tr><td><strong>Visit check in</strong></td><td>102.0</td><td>130.0</td><td>209.5</td><td>176.0</td></tr><tr><td><strong>Unknown</strong></td><td>37.0</td><td>20.0</td><td>0.0</td><td>50.0</td></tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mt-4">
+                            <div class="col-12">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h3>Median User Words - Session Progression Analysis</h3>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="mb-3">
+                                            <label for="progressionView" class="form-label">Select View:</label>
+                                            <select class="form-select" id="progressionView" onchange="updateProgressionChart()">
+                                                <option value="by_method">By Coaching Method</option>
+                                                <option value="by_method_version">By Coaching Method per Version</option>
+                                                <option value="by_version">By Version</option>
+                                            </select>
+                                        </div>
+                                        <div class="chart-container" style="position: relative; height: 400px;">
+                                            <canvas id="progressionChart"></canvas>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Definitions Tab -->
+                    <div class="tab-pane fade" id="definitions" role="tabpanel" aria-labelledby="definitions-tab">
+                        <div class="row mt-4">
+                            <div class="col-12">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h3>Definitions</h3>
+                                    </div>
+                                    <div class="card-body">
+                                        <h5>Version Definitions</h5>
+                                        <p>This dashboard compares four coaching bot versions based on experiment IDs and version ranges:</p>
+                                        <ul>
+                                            <li><strong>Coaching bot V3:</strong> Experiment IDs: E2b4855f-8550-47ff-87d2-d92018676ff3 or 1027993a-40c9-4484-a5fb-5c7e034dadcd (All versions)</li>
+                                            <li><strong>Coaching bot V4:</strong> Experiment ID: b7621271-da98-459f-9f9b-f68335d09ad4 (Version 13 and above)</li>
+                                            <li><strong>Coaching bot V5:</strong> Experiment ID: 5d8be75e-03ff-4e3a-ab6a-e0aff6580986 (Version 1 to 4)</li>
+                                            <li><strong>Coaching bot V6:</strong> Experiment ID: 5d8be75e-03ff-4e3a-ab6a-e0aff6580986 (Version 5 and above)</li>
+                                        </ul>
+                                        
+                                        <h5>Coaching Methods</h5>
+                                        <p>Coaching methods are detected through a 3-tier approach:</p>
+                                        <ul>
+                                            <li><strong>Scenario:</strong> Roleplay and scenario-based coaching</li>
+                                            <li><strong>Microlearning:</strong> Quiz and microlearning sessions</li>
+                                            <li><strong>Microlearning vaccines:</strong> Vaccine-specific quiz sessions</li>
+                                            <li><strong>Motivational interviewing:</strong> Motivational interview techniques</li>
+                                            <li><strong>Visit check in:</strong> Home visit debrief sessions</li>
+                                        </ul>
+                                        
+                                        <h5 class="mt-4">Average FLW Score by Method and Version</h5>
+                                        <p>This metric shows the average session rating (1-5 scale) grouped by coaching method and bot version.</p>
+                                        <ul>
+                                            <li><strong>Calculation:</strong> Average of user ratings for sessions ending with "How useful did you find this coaching session? Please rate it from 1 to 5"</li>
+                                            <li><strong>Rating Scale:</strong> 1 (not useful) to 5 (very useful)</li>
+                                            <li><strong>Method Detection:</strong> Based on session tags (coach_method_*) or message content analysis</li>
+                                            <li><strong>Version Detection:</strong> Based on experiment ID and version tags from last message</li>
+                                            <li><strong>Purpose:</strong> Identify whether coaching methods receive higher ratings with bot evolution</li>
+                                        </ul>
+                                        
+                                        <h5 class="mt-4">Median User Words per Session by Method and Version</h5>
+                                        <p>This metric shows the median number of words users type per session, grouped by coaching method and bot version.</p>
+                                        <ul>
+                                            <li><strong>Calculation:</strong> Median word count of all user messages within a session</li>
+                                            <li><strong>Method Detection:</strong> Based on session tags (coach_method_*) or message content analysis</li>
+                                            <li><strong>Version Detection:</strong> Based on experiment ID and version tags from last message</li>
+                                            <li><strong>Word Count:</strong> Total words across all user messages in a session</li>
+                                        </ul>
+                                        
+                                        <h6>Session Numbering:</h6>
+                                        <p>For line graph analysis, sessions are numbered chronologically per participant:</p>
+                                        <ul>
+                                            <li><strong>Participant ID:</strong> Based on participant.identifier field</li>
+                                            <li><strong>Chronological Order:</strong> Sorted by session created_at timestamp</li>
+                                            <li><strong>Session Number:</strong> Position in participant's session sequence (1st, 2nd, 3rd, etc.)</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        // Progression data from server
+        const progressionData = {"by_method": {"Scenario": {"1": 140.56521739130434, "6": 212.41447368421052, "10": 151.64285714285714, "14": 90.71428571428571, "18": 102.5, "22": 121.28571428571429, "2": 191.76315789473685, "8": 196.72222222222223, "9": 179.97826086956522, "11": 170.28703703703704, "16": 171.49122807017545, "21": 216.96363636363637, "3": 214.14814814814815, "4": 163.29166666666666, "12": 190.55555555555554, "20": 103.5, "5": 173.34615384615384, "17": 131.94736842105263, "13": 138.52941176470588, "7": 183.21621621621622, "15": 149.66666666666666, "19": 94.0}, "Microlearning": {"2": 155.79518072289156, "3": 73.3076923076923, "7": 309.6842105263158, "11": 85.4, "15": 155.46666666666667, "19": 167.6, "20": 194.20833333333334, "9": 62.5, "13": 76.0, "17": 98.0, "21": 56.2, "10": 181.87962962962962, "16": 76.625, "6": 125.76190476190476, "14": 123.66666666666667, "18": 174.78571428571428, "22": 145.15384615384616, "4": 116.8, "8": 107.2, "12": 118.0, "5": 189.89743589743588, "1": 36.86842105263158}, "Microlearning vaccines": {"4": 153.578125, "14": 187.14102564102564, "19": 129.625, "9": 196.54, "20": 58.25, "15": 77.2, "21": 86.0, "13": 125.0, "18": 126.75, "10": 154.0, "5": 58.0}, "Motivational interviewing": {"4": 199.0, "8": 234.34313725490196, "12": 132.4, "16": 99.6, "20": 162.875, "3": 231.72435897435898, "13": 232.85393258426967, "18": 169.11320754716982, "10": 82.0, "14": 95.85714285714286, "22": 135.25, "19": 165.1578947368421, "7": 128.05, "11": 118.9375, "15": 196.71428571428572, "5": 99.75, "9": 144.83333333333334, "17": 133.57142857142858, "21": 66.66666666666667, "6": 123.0, "1": 32.43956043956044}, "Visit check in": {"5": 280.0652173913044, "9": 240.25, "13": 145.2, "17": 383.8305084745763, "21": 278.0, "12": 261.35185185185185, "22": 265.0, "10": 1951.7777777777778, "7": 442.17721518987344, "11": 204.5, "15": 66.0, "19": 198.66666666666666, "18": 119.75, "4": 278.30434782608694, "8": 216.76190476190476, "16": 284.0, "20": 146.57142857142858, "6": 134.83333333333334, "14": 149.0, "2": 256.4117647058824, "3": 472.0}, "Unknown": {"1": 36.77157360406091, "2": 69.77319587628865, "3": 61.56353591160221, "4": 69.85714285714286, "5": 58.23668639053255, "6": 50.88125, "7": 61.0, "8": 53.83870967741935, "9": 51.11920529801324, "10": 52.8843537414966, "11": 51.4041095890411, "12": 46.90510948905109, "13": 56.89312977099237, "14": 49.935483870967744, "15": 48.23853211009175, "16": 49.4468085106383, "17": 51.640449438202246, "18": 40.735632183908045, "19": 45.404761904761905, "20": 48.294871794871796, "21": 38.44444444444444, "22": 39.0}}, "by_method_version": {"Scenario_V3": {}, "Scenario_V4": {"1": 72.05, "6": 97.16666666666667, "10": 114.83333333333333, "14": 90.71428571428571, "18": 102.5, "22": 126.6, "8": 62.5, "12": 55.0, "16": 92.66666666666667, "20": 54.0, "5": 124.80952380952381, "9": 129.6315789473684, "13": 138.52941176470588, "17": 149.15384615384616, "21": 162.54545454545453, "7": 88.33333333333333, "11": 164.66666666666666, "15": 82.0, "19": 94.0, "2": 57.4, "3": 81.0}, "Scenario_V5": {"1": 191.08387096774194, "2": 199.36666666666667, "6": 212.7325581395349, "8": 204.61764705882354, "9": 215.40740740740742, "10": 161.6818181818182, "11": 184.14545454545456, "16": 177.5, "3": 219.26923076923077, "4": 163.29166666666666, "5": 206.2258064516129, "7": 190.24242424242425, "12": 194.25, "17": 134.5, "15": 216.5}, "Scenario_V6": {"21": 230.5681818181818, "16": 174.75, "17": 74.75, "22": 108.0, "11": 155.38, "6": 223.48333333333332, "1": 156.875, "20": 128.25, "12": 276.0, "2": 339.6666666666667, "7": 236.0, "15": 219.0}, "Microlearning_V3": {}, "Microlearning_V4": {"2": 90.6875, "3": 73.3076923076923, "7": 88.33333333333333, "11": 74.33333333333333, "15": 82.4, "19": 159.0, "9": 62.5, "13": 76.0, "17": 98.0, "21": 53.5, "6": 121.55, "10": 119.70588235294117, "14": 80.57142857142857, "18": 174.78571428571428, "22": 148.08333333333334, "4": 116.8, "8": 118.5, "12": 118.0, "16": 78.0, "20": 143.0, "5": 77.33333333333333, "1": 36.86842105263158}, "Microlearning_V5": {"7": 351.1875, "15": 153.11764705882354, "2": 196.64705882352942, "10": 222.76315789473685, "5": 174.47826086956522, "11": 84.5, "16": 129.5, "14": 301.3333333333333, "8": 62.0}, "Microlearning_V6": {"20": 196.43478260869566, "15": 167.83333333333334, "16": 49.5, "21": 58.0, "10": 172.50943396226415, "5": 203.21153846153845, "22": 110.0, "19": 180.5, "11": 119.5, "6": 210.0, "14": 194.0}, "Microlearning vaccines_V3": {}, "Microlearning vaccines_V4": {}, "Microlearning vaccines_V5": {"4": 151.5529411764706, "14": 205.0681818181818, "9": 158.95, "15": 69.0, "13": 132.66666666666666, "5": 47.0}, "Microlearning vaccines_V6": {"19": 129.625, "14": 163.94117647058823, "20": 58.25, "9": 221.6, "4": 157.58139534883722, "21": 86.0, "18": 126.75, "10": 154.0, "15": 89.5, "5": 69.0, "13": 102.0}, "Motivational interviewing_V3": {}, "Motivational interviewing_V4": {"4": 141.8, "8": 111.75, "12": 106.33333333333333, "16": 99.6, "20": 169.83333333333334, "10": 82.0, "14": 52.5, "18": 75.0, "22": 93.0, "3": 143.16666666666666, "7": 128.05, "11": 118.9375, "15": 196.71428571428572, "19": 188.42857142857142, "5": 99.75, "9": 178.33333333333334, "13": 72.33333333333333, "17": 82.0, "21": 66.66666666666667, "6": 123.0, "1": 32.43956043956044}, "Motivational interviewing_V5": {"3": 263.69, "13": 269.1489361702128, "8": 258.0, "14": 159.5, "12": 171.5, "4": 81.0, "9": 85.0}, "Motivational interviewing_V6": {"18": 174.76, "13": 201.46153846153845, "19": 100.0, "8": 228.984126984127, "3": 198.25, "20": 142.0, "17": 172.25, "22": 177.5, "14": 82.33333333333333, "9": 124.5, "4": 603.0}, "Visit check in_V3": {"6": 137.5, "16": 103.0, "4": 101.0, "20": 65.0}, "Visit check in_V4": {"5": 89.33333333333333, "9": 240.25, "13": 123.0, "17": 129.28571428571428, "21": 181.33333333333334, "7": 87.0, "11": 51.0, "15": 66.0, "19": 122.5, "4": 286.3636363636364, "8": 209.8, "12": 165.875, "16": 292.35714285714283, "20": 152.84615384615384, "6": 143.0, "10": 130.0, "14": 149.0, "18": 165.0, "22": 146.0}, "Visit check in_V5": {"5": 308.675, "12": 325.1020408163265, "17": 176.75, "10": 2862.6666666666665, "2": 273.2542372881356, "7": 323.7, "13": 166.0, "11": 235.2, "16": 448.0, "3": 472.0, "6": 105.0}, "Visit check in_V6": {"22": 270.8048780487805, "17": 490.5, "18": 104.66666666666667, "12": 224.2325581395349, "7": 470.46268656716416, "2": 218.19230769230768, "16": 250.66666666666666, "21": 471.3333333333333, "19": 351.0, "13": 168.33333333333334, "8": 356.0}, "Unknown_V3": {"1": 69.3862433862434, "2": 71.94117647058823, "3": 62.22346368715084, "4": 71.34502923976608, "5": 58.89221556886228, "6": 51.50632911392405, "7": 61.383116883116884, "8": 54.15584415584416, "9": 51.785234899328856, "10": 53.226027397260275, "11": 51.97222222222222, "12": 47.22794117647059, "13": 57.52713178294574, "14": 50.721311475409834, "15": 49.03738317757009, "16": 50.45652173913044, "17": 52.20454545454545, "18": 41.18604651162791, "19": 46.41975308641975, "20": 49.51315789473684, "21": 39.47142857142857, "22": 40.30909090909091}, "Unknown_V4": {"1": 30.563947633434037, "2": 11.857142857142858, "4": 6.25, "5": 3.5, "6": 1.5, "3": 2.5, "19": 2.0, "20": 2.0, "21": 2.5, "22": 3.0, "9": 1.5, "11": 10.5, "13": 16.0, "14": 2.0, "15": 5.5, "16": 3.0, "18": 2.0, "12": 3.0, "17": 2.0, "7": 2.0, "8": 5.0, "10": 3.0}, "Unknown_V5": {}, "Unknown_V6": {"19": 50.0}}, "by_version": {"V3": {"1": 69.3862433862434, "2": 71.94117647058823, "3": 62.22346368715084, "4": 71.51744186046511, "5": 58.89221556886228, "6": 52.58125, "7": 61.383116883116884, "8": 54.15584415584416, "9": 51.785234899328856, "10": 53.226027397260275, "11": 51.97222222222222, "12": 47.22794117647059, "13": 57.52713178294574, "14": 50.721311475409834, "15": 49.03738317757009, "16": 51.02150537634409, "17": 52.20454545454545, "18": 41.18604651162791, "19": 46.41975308641975, "20": 49.714285714285715, "21": 39.47142857142857, "22": 40.30909090909091}, "V4": {"1": 34.90257648953301, "2": 74.36363636363636, "3": 111.875, "4": 211.61111111111111, "5": 105.41666666666667, "6": 112.51428571428572, "7": 110.375, "8": 169.25806451612902, "9": 136.23333333333332, "10": 114.25, "11": 104.10714285714286, "12": 134.85185185185185, "13": 117.67857142857143, "14": 82.82142857142857, "15": 134.11111111111111, "16": 193.5, "17": 126.46153846153847, "18": 139.19230769230768, "19": 154.96153846153845, "20": 136.16, "21": 132.83333333333334, "22": 125.82608695652173}, "V5": {"1": 191.08387096774194, "2": 229.5142857142857, "3": 256.23622047244095, "4": 153.47272727272727, "5": 240.0, "6": 211.49425287356323, "7": 276.70666666666665, "8": 229.27142857142857, "9": 180.27941176470588, "10": 442.3939393939394, "11": 185.0483870967742, "12": 305.140350877193, "13": 257.3076923076923, "14": 209.10204081632654, "15": 149.89743589743588, "16": 184.48, "17": 170.71428571428572}, "V6": {"18": 164.55, "19": 132.96610169491527, "20": 179.75, "21": 231.7450980392157, "22": 256.17391304347825, "16": 167.74358974358975, "17": 429.3333333333333, "13": 196.8372093023256, "14": 158.28947368421052, "15": 165.12820512820514, "8": 230.96875, "9": 218.46774193548387, "10": 171.83636363636364, "11": 154.0, "12": 227.6086956521739, "6": 223.2622950819672, "7": 467.0147058823529, "1": 156.875, "2": 230.75862068965517, "3": 198.25, "4": 167.70454545454547, "5": 200.67924528301887}}};
+        
+        let progressionChart = null;
+        
+        function updateProgressionChart() {
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th>Method</th>
+                                        <th>Coaching bot V3</th><th>Coaching bot V4</th><th>Coaching bot V5</th><th>Coaching bot V6</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td><strong>Scenario</strong></td><td>-</td><td>4.81</td><td>4.49</td><td>4.67</td></tr><tr><td><strong>Microlearning</strong></td><td>-</td><td>4.85</td><td>4.48</td><td>4.69</td></tr><tr><td><strong>Microlearning vaccines</strong></td><td>-</td><td>-</td><td>4.49</td><td>4.66</td></tr><tr><td><strong>Motivational interviewing</strong></td><td>-</td><td>4.86</td><td>4.65</td><td>4.70</td></tr><tr><td><strong>Visit check in</strong></td><td>5.00</td><td>4.93</td><td>4.61</td><td>4.74</td></tr><tr><td><strong>Unknown</strong></td><td>4.81</td><td>-</td><td>-</td><td>5.00</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Median User Words per Session by Method and Version</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th>Method</th>
+                                        <th>Coaching bot V3</th><th>Coaching bot V4</th><th>Coaching bot V5</th><th>Coaching bot V6</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td><strong>Scenario</strong></td><td>0.0</td><td>85.0</td><td>150.5</td><td>128.5</td></tr><tr><td><strong>Microlearning</strong></td><td>0.0</td><td>76.0</td><td>122.0</td><td>89.0</td></tr><tr><td><strong>Microlearning vaccines</strong></td><td>0.0</td><td>0.0</td><td>93.5</td><td>90.5</td></tr><tr><td><strong>Motivational interviewing</strong></td><td>0.0</td><td>81.0</td><td>167.5</td><td>129.0</td></tr><tr><td><strong>Visit check in</strong></td><td>102.0</td><td>130.0</td><td>209.5</td><td>176.0</td></tr><tr><td><strong>Unknown</strong></td><td>37.0</td><td>20.0</td><td>0.0</td><td>50.0</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Session Progression Analysis</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="progressionView" class="form-label">Select View:</label>
+                            <select class="form-select" id="progressionView" onchange="updateProgressionChart()">
+                                <option value="by_method">By Coaching Method</option>
+                                <option value="by_method_version">By Method and Version</option>
+                                <option value="by_version">By Version Only</option>
+                            </select>
+                        </div>
+                        <div class="chart-container" style="position: relative; height: 400px;">
+                            <canvas id="progressionChart"></canvas>
+                        </div>
+                        <div class="mt-3">
+                            <small class="text-muted">
+                                <strong>X-axis:</strong> Session number (1st, 2nd, 3rd, etc. session for each participant)<br>
+                                <strong>Y-axis:</strong> Average number of words per session<br>
+                                <strong>Data:</strong> Limited to first 22 sessions per participant
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Definitions</h3>
+                    </div>
+                    <div class="card-body">
+                        <h5>Coaching Bot Versions</h5>
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Version</th>
+                                    <th>Experiment ID</th>
+                                    <th>Version Range</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>Coaching bot V3</strong></td>
+                                    <td>E2b4855f-8550-47ff-87d2-d92018676ff3<br/>or 1027993a-40c9-4484-a5fb-5c7e034dadcd</td>
+                                    <td>All versions</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Coaching bot V4</strong></td>
+                                    <td>b7621271-da98-459f-9f9b-f68335d09ad4</td>
+                                    <td>13 and above</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Coaching bot V5</strong></td>
+                                    <td>5d8be75e-03ff-4e3a-ab6a-e0aff6580986</td>
+                                    <td>1 to 4</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Coaching bot V6</strong></td>
+                                    <td>5d8be75e-03ff-4e3a-ab6a-e0aff6580986</td>
+                                    <td>5 and above</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        
+                        <h5 class="mt-4">Metric Definitions</h5>
+                        <ul>
+                            <li><strong>Sessions:</strong> Bot-initiated interactions excluding split sessions</li>
+                            <li><strong>Annotated Sessions:</strong> Sessions with non-version tags</li>
+                            <li><strong>Refrigeration Examples:</strong> Sessions with "refrigerator_example" tag</li>
+                            <li><strong>Median Human Words:</strong> Median word count of user messages per session</li>
+                            <li><strong>Average Session Rating:</strong> Mean rating (1-5) from user feedback</li>
+                        </ul>
+                        
+                        <h5 class="mt-4">Refrigerator Example Rate by Method</h5>
+                        <p>This metric shows the percentage of sessions with refrigerator examples within each coaching method.</p>
+                        <ul>
+                            <li><strong>Method Detection:</strong> Based on session tags (coach_method_*) or message content analysis</li>
+                            <li><strong>Calculation:</strong> (Sessions with "refrigerator_example" tag) / (Sessions with refrigerator annotations) × 100</li>
+                            <li><strong>Denominator:</strong> Sessions with "refrigerator_example" OR "not_refrigerator_example" tags</li>
+                            <li><strong>Numerator:</strong> Sessions with "refrigerator_example" tag</li>
+                        </ul>
+                        
+                        <h6>Coaching Methods:</h6>
+                        <ul>
+                            <li><strong>Scenario:</strong> Roleplay-based coaching sessions</li>
+                            <li><strong>Microlearning:</strong> Quiz-based learning sessions</li>
+                            <li><strong>Microlearning vaccines:</strong> Vaccine-specific quiz sessions</li>
+                            <li><strong>Motivational interviewing:</strong> Motivational interview techniques</li>
+                            <li><strong>Visit check in:</strong> Home visit debrief sessions</li>
+                        </ul>
+                        
+                        <h5 class="mt-4">Average FLW Score by Method and Version</h5>
+                        <p>This metric shows the average session rating (1-5 scale) grouped by coaching method and bot version.</p>
+                        <ul>
+                            <li><strong>Calculation:</strong> Average of user ratings for sessions ending with "How useful did you find this coaching session? Please rate it from 1 to 5"</li>
+                            <li><strong>Rating Scale:</strong> 1 (not useful) to 5 (very useful)</li>
+                            <li><strong>Method Detection:</strong> Based on session tags (coach_method_*) or message content analysis</li>
+                            <li><strong>Version Detection:</strong> Based on experiment ID and version tags from last message</li>
+                            <li><strong>Purpose:</strong> Identify whether coaching methods receive higher ratings with bot evolution</li>
+                        </ul>
+                        
+                        <h5 class="mt-4">Median User Words per Session by Method and Version</h5>
+                        <p>This metric shows the median number of words users type per session, grouped by coaching method and bot version.</p>
+                        <ul>
+                            <li><strong>Calculation:</strong> Median word count of all user messages within a session</li>
+                            <li><strong>Method Detection:</strong> Based on session tags (coach_method_*) or message content analysis</li>
+                            <li><strong>Version Detection:</strong> Based on experiment ID and version tags from last message</li>
+                            <li><strong>Word Count:</strong> Total words across all user messages in a session</li>
+                        </ul>
+                        
+                        <h6>Session Numbering:</h6>
+                        <p>For line graph analysis, sessions are numbered chronologically per participant:</p>
+                        <ul>
+                            <li><strong>Participant ID:</strong> Based on participant.identifier field</li>
+                            <li><strong>Chronological Order:</strong> Sorted by session created_at timestamp</li>
+                            <li><strong>Session Number:</strong> Position in participant's session sequence (1st, 2nd, 3rd, etc.)</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        // Progression data from server
+        const progressionData = {"by_method": {"Scenario": {"1": 140.56521739130434, "6": 212.41447368421052, "10": 151.64285714285714, "14": 90.71428571428571, "18": 102.5, "22": 121.28571428571429, "2": 191.76315789473685, "8": 196.72222222222223, "9": 179.97826086956522, "11": 170.28703703703704, "16": 171.49122807017545, "21": 216.96363636363637, "3": 214.14814814814815, "4": 163.29166666666666, "12": 190.55555555555554, "20": 103.5, "5": 173.34615384615384, "17": 131.94736842105263, "13": 138.52941176470588, "7": 183.21621621621622, "15": 149.66666666666666, "19": 94.0}, "Microlearning": {"2": 155.79518072289156, "3": 73.3076923076923, "7": 309.6842105263158, "11": 85.4, "15": 155.46666666666667, "19": 167.6, "20": 194.20833333333334, "9": 62.5, "13": 76.0, "17": 98.0, "21": 56.2, "10": 181.87962962962962, "16": 76.625, "6": 125.76190476190476, "14": 123.66666666666667, "18": 174.78571428571428, "22": 145.15384615384616, "4": 116.8, "8": 107.2, "12": 118.0, "5": 189.89743589743588, "1": 36.86842105263158}, "Microlearning vaccines": {"4": 153.578125, "14": 187.14102564102564, "19": 129.625, "9": 196.54, "20": 58.25, "15": 77.2, "21": 86.0, "13": 125.0, "18": 126.75, "10": 154.0, "5": 58.0}, "Motivational interviewing": {"4": 199.0, "8": 234.34313725490196, "12": 132.4, "16": 99.6, "20": 162.875, "3": 231.72435897435898, "13": 232.85393258426967, "18": 169.11320754716982, "10": 82.0, "14": 95.85714285714286, "22": 135.25, "19": 165.1578947368421, "7": 128.05, "11": 118.9375, "15": 196.71428571428572, "5": 99.75, "9": 144.83333333333334, "17": 133.57142857142858, "21": 66.66666666666667, "6": 123.0, "1": 32.43956043956044}, "Visit check in": {"5": 280.0652173913044, "9": 240.25, "13": 145.2, "17": 383.8305084745763, "21": 278.0, "12": 261.35185185185185, "22": 265.0, "10": 1951.7777777777778, "7": 442.17721518987344, "11": 204.5, "15": 66.0, "19": 198.66666666666666, "18": 119.75, "4": 278.30434782608694, "8": 216.76190476190476, "16": 284.0, "20": 146.57142857142858, "6": 134.83333333333334, "14": 149.0, "2": 256.4117647058824, "3": 472.0}, "Unknown": {"1": 36.77157360406091, "2": 69.77319587628865, "3": 61.56353591160221, "4": 69.85714285714286, "5": 58.23668639053255, "6": 50.88125, "7": 61.0, "8": 53.83870967741935, "9": 51.11920529801324, "10": 52.8843537414966, "11": 51.4041095890411, "12": 46.90510948905109, "13": 56.89312977099237, "14": 49.935483870967744, "15": 48.23853211009175, "16": 49.4468085106383, "17": 51.640449438202246, "18": 40.735632183908045, "19": 45.404761904761905, "20": 48.294871794871796, "21": 38.44444444444444, "22": 39.0}}, "by_method_version": {"Scenario_V3": {}, "Scenario_V4": {"1": 72.05, "6": 97.16666666666667, "10": 114.83333333333333, "14": 90.71428571428571, "18": 102.5, "22": 126.6, "8": 62.5, "12": 55.0, "16": 92.66666666666667, "20": 54.0, "5": 124.80952380952381, "9": 129.6315789473684, "13": 138.52941176470588, "17": 149.15384615384616, "21": 162.54545454545453, "7": 88.33333333333333, "11": 164.66666666666666, "15": 82.0, "19": 94.0, "2": 57.4, "3": 81.0}, "Scenario_V5": {"1": 191.08387096774194, "2": 199.36666666666667, "6": 212.7325581395349, "8": 204.61764705882354, "9": 215.40740740740742, "10": 161.6818181818182, "11": 184.14545454545456, "16": 177.5, "3": 219.26923076923077, "4": 163.29166666666666, "5": 206.2258064516129, "7": 190.24242424242425, "12": 194.25, "17": 134.5, "15": 216.5}, "Scenario_V6": {"21": 230.5681818181818, "16": 174.75, "17": 74.75, "22": 108.0, "11": 155.38, "6": 223.48333333333332, "1": 156.875, "20": 128.25, "12": 276.0, "2": 339.6666666666667, "7": 236.0, "15": 219.0}, "Microlearning_V3": {}, "Microlearning_V4": {"2": 90.6875, "3": 73.3076923076923, "7": 88.33333333333333, "11": 74.33333333333333, "15": 82.4, "19": 159.0, "9": 62.5, "13": 76.0, "17": 98.0, "21": 53.5, "6": 121.55, "10": 119.70588235294117, "14": 80.57142857142857, "18": 174.78571428571428, "22": 148.08333333333334, "4": 116.8, "8": 118.5, "12": 118.0, "16": 78.0, "20": 143.0, "5": 77.33333333333333, "1": 36.86842105263158}, "Microlearning_V5": {"7": 351.1875, "15": 153.11764705882354, "2": 196.64705882352942, "10": 222.76315789473685, "5": 174.47826086956522, "11": 84.5, "16": 129.5, "14": 301.3333333333333, "8": 62.0}, "Microlearning_V6": {"20": 196.43478260869566, "15": 167.83333333333334, "16": 49.5, "21": 58.0, "10": 172.50943396226415, "5": 203.21153846153845, "22": 110.0, "19": 180.5, "11": 119.5, "6": 210.0, "14": 194.0}, "Microlearning vaccines_V3": {}, "Microlearning vaccines_V4": {}, "Microlearning vaccines_V5": {"4": 151.5529411764706, "14": 205.0681818181818, "9": 158.95, "15": 69.0, "13": 132.66666666666666, "5": 47.0}, "Microlearning vaccines_V6": {"19": 129.625, "14": 163.94117647058823, "20": 58.25, "9": 221.6, "4": 157.58139534883722, "21": 86.0, "18": 126.75, "10": 154.0, "15": 89.5, "5": 69.0, "13": 102.0}, "Motivational interviewing_V3": {}, "Motivational interviewing_V4": {"4": 141.8, "8": 111.75, "12": 106.33333333333333, "16": 99.6, "20": 169.83333333333334, "10": 82.0, "14": 52.5, "18": 75.0, "22": 93.0, "3": 143.16666666666666, "7": 128.05, "11": 118.9375, "15": 196.71428571428572, "19": 188.42857142857142, "5": 99.75, "9": 178.33333333333334, "13": 72.33333333333333, "17": 82.0, "21": 66.66666666666667, "6": 123.0, "1": 32.43956043956044}, "Motivational interviewing_V5": {"3": 263.69, "13": 269.1489361702128, "8": 258.0, "14": 159.5, "12": 171.5, "4": 81.0, "9": 85.0}, "Motivational interviewing_V6": {"18": 174.76, "13": 201.46153846153845, "19": 100.0, "8": 228.984126984127, "3": 198.25, "20": 142.0, "17": 172.25, "22": 177.5, "14": 82.33333333333333, "9": 124.5, "4": 603.0}, "Visit check in_V3": {"6": 137.5, "16": 103.0, "4": 101.0, "20": 65.0}, "Visit check in_V4": {"5": 89.33333333333333, "9": 240.25, "13": 123.0, "17": 129.28571428571428, "21": 181.33333333333334, "7": 87.0, "11": 51.0, "15": 66.0, "19": 122.5, "4": 286.3636363636364, "8": 209.8, "12": 165.875, "16": 292.35714285714283, "20": 152.84615384615384, "6": 143.0, "10": 130.0, "14": 149.0, "18": 165.0, "22": 146.0}, "Visit check in_V5": {"5": 308.675, "12": 325.1020408163265, "17": 176.75, "10": 2862.6666666666665, "2": 273.2542372881356, "7": 323.7, "13": 166.0, "11": 235.2, "16": 448.0, "3": 472.0, "6": 105.0}, "Visit check in_V6": {"22": 270.8048780487805, "17": 490.5, "18": 104.66666666666667, "12": 224.2325581395349, "7": 470.46268656716416, "2": 218.19230769230768, "16": 250.66666666666666, "21": 471.3333333333333, "19": 351.0, "13": 168.33333333333334, "8": 356.0}, "Unknown_V3": {"1": 69.3862433862434, "2": 71.94117647058823, "3": 62.22346368715084, "4": 71.34502923976608, "5": 58.89221556886228, "6": 51.50632911392405, "7": 61.383116883116884, "8": 54.15584415584416, "9": 51.785234899328856, "10": 53.226027397260275, "11": 51.97222222222222, "12": 47.22794117647059, "13": 57.52713178294574, "14": 50.721311475409834, "15": 49.03738317757009, "16": 50.45652173913044, "17": 52.20454545454545, "18": 41.18604651162791, "19": 46.41975308641975, "20": 49.51315789473684, "21": 39.47142857142857, "22": 40.30909090909091}, "Unknown_V4": {"1": 30.563947633434037, "2": 11.857142857142858, "4": 6.25, "5": 3.5, "6": 1.5, "3": 2.5, "19": 2.0, "20": 2.0, "21": 2.5, "22": 3.0, "9": 1.5, "11": 10.5, "13": 16.0, "14": 2.0, "15": 5.5, "16": 3.0, "18": 2.0, "12": 3.0, "17": 2.0, "7": 2.0, "8": 5.0, "10": 3.0}, "Unknown_V5": {}, "Unknown_V6": {"19": 50.0}}, "by_version": {"V3": {"1": 69.3862433862434, "2": 71.94117647058823, "3": 62.22346368715084, "4": 71.51744186046511, "5": 58.89221556886228, "6": 52.58125, "7": 61.383116883116884, "8": 54.15584415584416, "9": 51.785234899328856, "10": 53.226027397260275, "11": 51.97222222222222, "12": 47.22794117647059, "13": 57.52713178294574, "14": 50.721311475409834, "15": 49.03738317757009, "16": 51.02150537634409, "17": 52.20454545454545, "18": 41.18604651162791, "19": 46.41975308641975, "20": 49.714285714285715, "21": 39.47142857142857, "22": 40.30909090909091}, "V4": {"1": 34.90257648953301, "2": 74.36363636363636, "3": 111.875, "4": 211.61111111111111, "5": 105.41666666666667, "6": 112.51428571428572, "7": 110.375, "8": 169.25806451612902, "9": 136.23333333333332, "10": 114.25, "11": 104.10714285714286, "12": 134.85185185185185, "13": 117.67857142857143, "14": 82.82142857142857, "15": 134.11111111111111, "16": 193.5, "17": 126.46153846153847, "18": 139.19230769230768, "19": 154.96153846153845, "20": 136.16, "21": 132.83333333333334, "22": 125.82608695652173}, "V5": {"1": 191.08387096774194, "2": 229.5142857142857, "3": 256.23622047244095, "4": 153.47272727272727, "5": 240.0, "6": 211.49425287356323, "7": 276.70666666666665, "8": 229.27142857142857, "9": 180.27941176470588, "10": 442.3939393939394, "11": 185.0483870967742, "12": 305.140350877193, "13": 257.3076923076923, "14": 209.10204081632654, "15": 149.89743589743588, "16": 184.48, "17": 170.71428571428572}, "V6": {"18": 164.55, "19": 132.96610169491527, "20": 179.75, "21": 231.7450980392157, "22": 256.17391304347825, "16": 167.74358974358975, "17": 429.3333333333333, "13": 196.8372093023256, "14": 158.28947368421052, "15": 165.12820512820514, "8": 230.96875, "9": 218.46774193548387, "10": 171.83636363636364, "11": 154.0, "12": 227.6086956521739, "6": 223.2622950819672, "7": 467.0147058823529, "1": 156.875, "2": 230.75862068965517, "3": 198.25, "4": 167.70454545454547, "5": 200.67924528301887}}};
+        
+        let progressionChart = null;
+        
+        function updateProgressionChart() {
+            const view = document.getElementById('progressionView').value;
+            const data = progressionData[view];
+            
+            if (progressionChart) {
+                progressionChart.destroy();
+            }
+            
+            const ctx = document.getElementById('progressionChart').getContext('2d');
+            
+            // Prepare datasets
+            const datasets = [];
+            const colors = [
+                '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', 
+                '#FF9F40', '#FF6384', '#C9CBCF', '#4BC0C0', '#FF6384'
+            ];
+            
+            let colorIndex = 0;
+            for (const [key, values] of Object.entries(data)) {
+                if (Object.keys(values).length === 0) continue;
+                
+                const sessionNumbers = Object.keys(values).map(Number).sort((a, b) => a - b);
+                const wordCounts = sessionNumbers.map(sessionNum => values[sessionNum] || 0);
+                
+                datasets.push({
+                    label: key,
+                    data: wordCounts.map((count, index) => ({
+                        x: sessionNumbers[index],
+                        y: count
+                    })),
+                    borderColor: colors[colorIndex % colors.length],
+                    backgroundColor: colors[colorIndex % colors.length] + '20',
+                    tension: 0.1,
+                    fill: false
+                });
+                colorIndex++;
+            }
+            
+            progressionChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            type: 'linear',
+                            position: 'bottom',
+                            title: {
+                                display: true,
+                                text: 'Session Number'
+                            },
+                            min: 1,
+                            max: 22
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Average Words per Session'
+                            },
+                            beginAtZero: true
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        },
+                        title: {
+                            display: true,
+                            text: 'User Verbosity Progression Across Sessions'
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Initialize chart on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            updateProgressionChart();
+        });
+    </script>
+</body>
+</html>
+        
