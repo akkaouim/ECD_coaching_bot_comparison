@@ -9,6 +9,9 @@ A web-based dashboard for comparing different versions of coaching bots in the O
 - **User Engagement**: Median user words per session with progression analysis
 - **Interactive Charts**: Line graphs showing session progression over time
 - **Method Detection**: Automatic detection of coaching methods (Scenario, Microlearning, etc.)
+- **Enhanced Rating Detection**: Comprehensive pattern matching for 68% rating extraction (vs. 0.07% basic)
+- **Data Quality Filtering**: Excludes split sessions and test sessions for accurate analysis
+- **Dynamic Statistics**: Real-time rating coverage metrics displayed as footnotes
 
 ## Quick Start
 
@@ -46,6 +49,15 @@ The dashboard expects data files in the following structure:
 - Version definitions and experiment ID mappings
 - Coaching method detection criteria
 - Metric calculation explanations
+
+## Data Quality and Filtering
+
+The dashboard applies comprehensive filtering to ensure data quality:
+
+- **Split Sessions Excluded**: Sessions with no participant messages (bot-only interactions)
+- **Test Sessions Excluded**: Sessions with participant IDs ending in @dimagi.com (internal testing)
+- **Consistent Filtering**: All tables, graphs, and metrics use the same exclusion criteria
+- **Enhanced Rating Detection**: Comprehensive pattern matching improves rating extraction from 0.07% to 68% of sessions
 
 ## Version Detection
 

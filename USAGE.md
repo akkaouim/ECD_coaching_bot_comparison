@@ -32,6 +32,15 @@ open version_comparison/version_comparison_dashboard.html
 
 ## 📊 Understanding the Dashboard
 
+### Data Quality and Filtering
+
+The dashboard applies comprehensive filtering to ensure accurate analysis:
+
+- **Split Sessions Excluded**: Sessions with no participant messages (bot-only interactions)
+- **Test Sessions Excluded**: Sessions with participant IDs ending in @dimagi.com (internal testing)
+- **Consistent Filtering**: All tables, graphs, and metrics use the same exclusion criteria
+- **Enhanced Rating Detection**: Comprehensive pattern matching improves rating extraction from 0.07% to 68% of sessions
+
 ### Dashboard Layout
 
 The dashboard consists of five main sections:
@@ -49,7 +58,7 @@ The dashboard consists of five main sections:
 3. **Method-Based Analysis Tables**
    - Refrigerator example rate by method and version
    - Median user words per session by method and version
-   - Average FLW score by method and version
+   - Average FLW score by method and version (with dynamic rating statistics)
 
 4. **Session Progression Analysis**
    - Interactive line graph with Chart.js

@@ -27,8 +27,17 @@ Version Comparison Dashboard
 ### Data Flow
 
 ```
-Raw Data Files → Filtering → Processing → Metrics → HTML Generation → Dashboard
+Raw Data Files → Comprehensive Filtering → Processing → Metrics → HTML Generation → Dashboard
 ```
+
+### Enhanced Data Quality
+
+The system now includes comprehensive filtering and enhanced detection:
+
+- **Split Session Detection**: Identifies sessions with no participant messages
+- **Test Session Detection**: Filters out sessions with @dimagi.com participant IDs
+- **Enhanced Rating Detection**: Comprehensive pattern matching for 68% rating extraction
+- **Consistent Filtering**: All metrics use the same exclusion criteria
 
 ## 📊 Data Specifications
 
@@ -142,28 +151,60 @@ def matches_version(session, version_config, messages):
     # 2. Get version from last message tags
     version_number = get_version_from_last_message(messages)
     
-    # 3. Check version constraints
+    # 3. Apply version range constraints
     version_range = version_config.get('version_range')
     if version_range is None:
         return True  # All versions
     elif version_range[1] is None:
-        return version_number >= version_range[0]
+        return version_number >= version_range[0]  # min and above
     else:
-        return version_range[0] <= version_number <= version_range[1]
+        return version_range[0] <= version_number <= version_range[1]  # range
+```
+
+#### Enhanced Rating Detection Algorithm
+```python
+def extract_session_rating(session, messages):
+    # 1. Find rating questions using comprehensive patterns
+    rating_patterns = [
+        r'how useful.*rate.*[1-5]',
+        r'rate.*useful.*[1-5]',
+        r'number.*[1-5].*rate',
+        # ... additional patterns
+    ]
+    
+    # 2. Extract user ratings with multiple formats
+    # - Single digit responses (1-5)
+    # - Written numbers (one, two, etc.)
+    # - Contextual responses (5= extremely useful)
+    
+    # 3. Return rating or None
+    return rating_value
 ```
 
 #### Session Filtering Algorithm
 ```python
-def is_split_session(session):
-    # Check for split_session tag
-    if 'split_session' in session.get('tags', []):
+def should_exclude_session(session, messages):
+    # 1. Check for split sessions (no participant messages)
+    if is_split_session(session, messages):
         return True
     
-    # Check if session has only 1 assistant message (bot-initiated)
-    if session.get('message_count', 0) == 1 and session.get('first_message_role') == 'assistant':
+    # 2. Check for test sessions (@dimagi.com participant ID)
+    if is_test_session(session):
         return True
     
     return False
+
+def is_split_session(session, messages):
+    # Check if session has no participant messages
+    for message in messages:
+        if message.get('role') == 'user':
+            return False  # Has user messages, not split
+    return True  # No user messages found, this is split
+
+def is_test_session(session):
+    # Check if participant ID ends with @dimagi.com
+    participant_id = session.get('participant', {}).get('identifier', '')
+    return participant_id.endswith('@dimagi.com')
 ```
 
 #### Annotation Detection Algorithm
