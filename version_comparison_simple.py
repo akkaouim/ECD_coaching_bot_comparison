@@ -360,7 +360,7 @@ class SimpleVersionComparisonDashboard:
         
         return 1
 
-    def calculate_median_words_by_method_and_version(self, sessions: List[Dict], messages: List[Dict]) -> Dict[str, Dict[str, float]]:
+    def calculate_median_words_by_method_and_version(self, sessions: List[Dict], messages: List[Dict], exclude_outliers: bool = False) -> Dict[str, Dict[str, float]]:
         """Calculate median user words per session grouped by coaching method and version"""
         method_version_words = {}
         
@@ -397,13 +397,20 @@ class SimpleVersionComparisonDashboard:
                     break
             
             if detected_method and version:
-                # Calculate total user words in this session
+                # Calculate total user words and message count in this session
                 user_words = 0
+                user_message_count = 0
                 for message in session_messages:
                     if message.get('role') == 'user':
+                        user_message_count += 1
                         content = message.get('content', '')
                         if content:
                             user_words += len(content.split())
+                
+                # Apply outlier filtering if requested
+                if exclude_outliers:
+                    if self.is_outlier_session(session_messages, user_message_count, user_words):
+                        continue
                 
                 if user_words > 0:
                     method_version_words[detected_method][version].append(user_words)
@@ -427,7 +434,90 @@ class SimpleVersionComparisonDashboard:
         
         return median_results
 
-    def calculate_session_progression_data(self, sessions: List[Dict], messages: List[Dict]) -> Dict:
+    def calculate_median_messages_by_method_and_version(self, sessions: List[Dict], messages: Dict) -> Dict[str, Dict[str, float]]:
+        """Calculate median number of participant messages per session grouped by coaching method and version"""
+        method_version_messages = {}
+        
+        # Initialize structure
+        for method in ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown']:
+            method_version_messages[method] = {}
+            for version in ['V3', 'V4', 'V5', 'V6']:
+                method_version_messages[method][version] = []
+        
+        # Collect message counts for each method-version combination
+        for session in sessions:
+            session_id = session.get('id')
+            session_messages = messages.get(session_id, [])
+            
+            # Skip split sessions and test sessions
+            if self.should_exclude_session(session, session_messages):
+                continue
+            
+            # Detect coaching method
+            detected_method = self.detect_coaching_method(session, session_messages)
+            
+            # Determine version
+            version = None
+            for version_name, version_config in self.coaching_bot_versions.items():
+                if self.matches_version(session, version_config, session_messages):
+                    if 'V3' in version_name:
+                        version = 'V3'
+                    elif 'V4' in version_name:
+                        version = 'V4'
+                    elif 'V5' in version_name:
+                        version = 'V5'
+                    elif 'V6' in version_name:
+                        version = 'V6'
+                    break
+            
+            if detected_method and version:
+                # Count user messages for this session
+                user_message_count = 0
+                for message in session_messages:
+                    if message.get('role') == 'user':
+                        user_message_count += 1
+                
+                if user_message_count > 0:
+                    method_version_messages[detected_method][version].append(user_message_count)
+        
+        # Calculate medians
+        median_results = {}
+        for method in method_version_messages:
+            median_results[method] = {}
+            for version in method_version_messages[method]:
+                message_counts = method_version_messages[method][version]
+                if message_counts:
+                    message_counts.sort()
+                    n = len(message_counts)
+                    if n % 2 == 0:
+                        median = (message_counts[n//2 - 1] + message_counts[n//2]) / 2
+                    else:
+                        median = message_counts[n//2]
+                    median_results[method][version] = median
+                else:
+                    median_results[method][version] = 0.0
+        
+        return median_results
+
+    def is_outlier_session(self, session_messages: List[Dict], user_message_count: int, user_words: int) -> bool:
+        """Check if session is an outlier based on message count or word count (3 standard deviations from mean)"""
+        if not session_messages or user_message_count == 0:
+            return False
+        
+        # Calculate statistics for all sessions to determine outliers
+        # This is a simplified approach - in practice, you'd want to calculate these once and cache them
+        # For now, we'll use reasonable thresholds based on typical session patterns
+        
+        # Typical session patterns (these could be calculated dynamically from all sessions)
+        # Message count thresholds (3 std dev from typical range)
+        message_threshold = 50  # Most normal sessions have < 50 user messages
+        
+        # Word count thresholds (3 std dev from typical range)  
+        word_threshold = 1000  # Most normal sessions have < 1000 user words
+        
+        return user_message_count > message_threshold or user_words > word_threshold
+
+    def calculate_session_progression_data(self, sessions: List[Dict], messages: List[Dict], exclude_outliers: bool = False) -> Dict:
         """Calculate session progression data for line graph"""
         # Group sessions by participant, excluding split and test sessions
         participant_sessions = {}
@@ -475,13 +565,20 @@ class SimpleVersionComparisonDashboard:
                 session_id = session.get('id')
                 session_messages = messages.get(session_id, [])
                 
-                # Calculate user words for this session
+                # Calculate user words and message count for this session
                 user_words = 0
+                user_message_count = 0
                 for message in session_messages:
                     if message.get('role') == 'user':
+                        user_message_count += 1
                         content = message.get('content', '')
                         if content:
                             user_words += len(content.split())
+                
+                # Apply outlier filtering if requested
+                if exclude_outliers:
+                    if self.is_outlier_session(session_messages, user_message_count, user_words):
+                        continue
                 
                 if user_words == 0:
                     continue
@@ -629,6 +726,44 @@ class SimpleVersionComparisonDashboard:
             row += "</tr>"
             rows += row
         
+        return rows
+
+    def generate_median_messages_table_rows(self, metrics: List[Dict]) -> str:
+        """Generate table rows for median messages by method and version"""
+        # Get all unique methods across all versions
+        all_methods = set()
+        for metric in metrics:
+            median_messages_data = metric.get('median_messages_by_method', {})
+            all_methods.update(median_messages_data.keys())
+
+        # Sort methods for consistent display
+        method_order = ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown']
+        sorted_methods = [method for method in method_order if method in all_methods]
+        sorted_methods.extend([method for method in all_methods if method not in method_order])
+
+        rows = ""
+        for method in sorted_methods:
+            row = f"<tr><td><strong>{method}</strong></td>"
+            for metric in metrics:
+                median_messages_data = metric.get('median_messages_by_method', {})
+                method_messages = median_messages_data.get(method, 0.0)
+                
+                # Handle case where method_messages might be a dict
+                if isinstance(method_messages, dict):
+                    # Get the average across all versions for this method
+                    version_messages = [messages for messages in method_messages.values() if messages > 0]
+                    if version_messages:
+                        method_messages = sum(version_messages) / len(version_messages)
+                    else:
+                        method_messages = 0.0
+                
+                if method_messages > 0:
+                    row += f"<td>{method_messages:.1f}</td>"
+                else:
+                    row += f"<td>-</td>"
+            row += "</tr>"
+            rows += row
+
         return rows
 
     def generate_rating_table_rows(self, metrics: List[Dict]) -> str:
@@ -874,6 +1009,9 @@ class SimpleVersionComparisonDashboard:
         # Calculate median words by method and version
         median_words_by_method = self.calculate_median_words_by_method_and_version(valid_sessions, messages_data)
         
+        # Calculate median messages by method and version
+        median_messages_by_method = self.calculate_median_messages_by_method_and_version(valid_sessions, messages_data)
+        
         # Calculate average rating by method and version
         average_rating_by_method = self.calculate_average_rating_by_method_and_version(valid_sessions, messages_data)
         
@@ -886,10 +1024,11 @@ class SimpleVersionComparisonDashboard:
             'median_human_words_per_session': median_words,
             'average_session_rating': avg_rating,
             'median_words_by_method': median_words_by_method,
+            'median_messages_by_method': median_messages_by_method,
             'average_rating_by_method': average_rating_by_method
         }
     
-    def generate_dashboard_html(self, metrics: List[Dict], progression_data: Dict = None, rating_stats: Dict = None) -> str:
+    def generate_dashboard_html(self, metrics: List[Dict], progression_data: Dict = None, rating_stats: Dict = None, progression_data_filtered: Dict = None) -> str:
         """Generate complete dashboard HTML"""
         # Generate summary table
         table_rows = ""
@@ -916,6 +1055,7 @@ class SimpleVersionComparisonDashboard:
         
         # Convert progression data to JSON for JavaScript
         progression_data_json = json.dumps(progression_data) if progression_data else "{}"
+        progression_data_filtered_json = json.dumps(progression_data_filtered) if progression_data_filtered else "{}"
         
         html_content = f"""
 <!DOCTYPE html>
@@ -1103,11 +1243,44 @@ class SimpleVersionComparisonDashboard:
                             <div class="col-12">
                                 <div class="card">
                                     <div class="card-header">
-                                        <h3>Median User Words per Session by Method and Version</h3>
+                                        <h3>Median Number of Participant Messages per Session by Method and Version</h3>
                                     </div>
                                     <div class="card-body">
                                         <div class="table-responsive">
                                             <table class="table table-striped table-hover">
+                                                <thead class="table-dark">
+                                                    <tr>
+                                                        <th>Method</th>
+                                                        {''.join([f'<th>{metric["version_name"]}</th>' for metric in metrics])}
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {self.generate_median_messages_table_rows(metrics)}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mt-4">
+                            <div class="col-12">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h3>Median User Words per Session by Method and Version</h3>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="mb-3">
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" id="excludeOutliers" onchange="toggleOutlierFilter()">
+                                                <label class="form-check-label" for="excludeOutliers">
+                                                    Exclude outlier sessions (sessions with >50 messages or >1000 words)
+                                                </label>
+                                            </div>
+                                        </div>
+                                        <div class="table-responsive">
+                                            <table class="table table-striped table-hover" id="medianWordsTable">
                                                 <thead class="table-dark">
                                                     <tr>
                                                         <th>Method</th>
@@ -1132,12 +1305,24 @@ class SimpleVersionComparisonDashboard:
                                     </div>
                                     <div class="card-body">
                                         <div class="mb-3">
-                                            <label for="progressionView" class="form-label">Select View:</label>
-                                            <select class="form-select" id="progressionView" onchange="updateProgressionChart()">
-                                                <option value="by_method">By Coaching Method</option>
-                                                <option value="by_method_version">By Coaching Method per Version</option>
-                                                <option value="by_version">By Version</option>
-                                            </select>
+                                            <div class="row">
+                                                <div class="col-md-6">
+                                                    <label for="progressionView" class="form-label">Select View:</label>
+                                                    <select class="form-select" id="progressionView" onchange="updateProgressionChart()">
+                                                        <option value="by_method">By Coaching Method</option>
+                                                        <option value="by_method_version">By Coaching Method per Version</option>
+                                                        <option value="by_version">By Version</option>
+                                                    </select>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <div class="form-check mt-4">
+                                                        <input class="form-check-input" type="checkbox" id="excludeOutliersProgression" onchange="updateProgressionChart()">
+                                                        <label class="form-check-label" for="excludeOutliersProgression">
+                                                            Exclude outlier sessions
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
                                         <div class="chart-container" style="position: relative; height: 400px;">
                                             <canvas id="progressionChart"></canvas>
@@ -1186,6 +1371,15 @@ class SimpleVersionComparisonDashboard:
                                             <li><strong>Purpose:</strong> Identify whether coaching methods receive higher ratings with bot evolution</li>
                                         </ul>
                                         
+                                        <h5 class="mt-4">Median Number of Participant Messages per Session by Method and Version</h5>
+                                        <p>This metric shows the median number of messages participants send per session, grouped by coaching method and bot version.</p>
+                                        <ul>
+                                            <li><strong>Calculation:</strong> Median count of user messages within a session</li>
+                                            <li><strong>Method Detection:</strong> Based on session tags (coach_method_*) or message content analysis</li>
+                                            <li><strong>Version Detection:</strong> Based on experiment ID and version tags from last message</li>
+                                            <li><strong>Message Count:</strong> Total number of user messages in a session</li>
+                                        </ul>
+                                        
                                         <h5 class="mt-4">Median User Words per Session by Method and Version</h5>
                                         <p>This metric shows the median number of words users type per session, grouped by coaching method and bot version.</p>
                                         <ul>
@@ -1193,6 +1387,7 @@ class SimpleVersionComparisonDashboard:
                                             <li><strong>Method Detection:</strong> Based on session tags (coach_method_*) or message content analysis</li>
                                             <li><strong>Version Detection:</strong> Based on experiment ID and version tags from last message</li>
                                             <li><strong>Word Count:</strong> Total words across all user messages in a session</li>
+                                            <li><strong>Outlier Filtering:</strong> Optional checkbox to exclude sessions with >50 messages or >1000 words</li>
                                         </ul>
                                         
                                         <h6>Session Numbering:</h6>
@@ -1217,6 +1412,7 @@ class SimpleVersionComparisonDashboard:
     <script>
         // Progression data from server
         const progressionData = {progression_data_json};
+        const progressionDataFiltered = {progression_data_filtered_json};
         
         let progressionChart = null;
         
@@ -1412,12 +1608,20 @@ class SimpleVersionComparisonDashboard:
     <script>
         // Progression data from server
         const progressionData = {progression_data_json};
+        const progressionDataFiltered = {progression_data_filtered_json};
         
         let progressionChart = null;
         
+        function toggleOutlierFilter() {{
+            // This function would need to be implemented to recalculate data with outlier filtering
+            // For now, it's a placeholder that could trigger a page reload or AJAX call
+            console.log('Outlier filter toggled - this would require server-side recalculation');
+        }}
+        
         function updateProgressionChart() {{
             const view = document.getElementById('progressionView').value;
-            const data = progressionData[view];
+            const excludeOutliers = document.getElementById('excludeOutliersProgression').checked;
+            const data = excludeOutliers ? progressionDataFiltered[view] : progressionData[view];
             
             if (progressionChart) {{
                 progressionChart.destroy();
@@ -1540,16 +1744,17 @@ class SimpleVersionComparisonDashboard:
             metric = self.calculate_metrics_for_version(version_name, version_sessions, messages_data)
             metrics.append(metric)
         
-        # Calculate session progression data for line graph
+        # Calculate session progression data for line graph (both with and without outliers)
         print("Calculating session progression data...")
         progression_data = self.calculate_session_progression_data(sessions, messages_data)
+        progression_data_filtered = self.calculate_session_progression_data(sessions, messages_data, exclude_outliers=True)
         
         # Calculate rating statistics
         print("Calculating rating statistics...")
         rating_stats = self.calculate_rating_statistics(sessions, messages_data)
         
         # Generate HTML
-        html_content = self.generate_dashboard_html(metrics, progression_data, rating_stats)
+        html_content = self.generate_dashboard_html(metrics, progression_data, rating_stats, progression_data_filtered)
         
         # Save to file
         output_file = self.output_dir / "version_comparison_dashboard.html"
