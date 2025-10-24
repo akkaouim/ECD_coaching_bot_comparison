@@ -6,18 +6,22 @@ A web-based dashboard for comparing different versions of coaching bots in the O
 
 - **Summary Metrics**: Overview of sessions, annotations, and ratings by bot version
 - **Performance Analysis**: Refrigerator example rates and FLW scores by method and version
-- **User Engagement**: Median user words per session with progression analysis
-- **Interactive Charts**: Line graphs showing session progression over time
+- **User Engagement**: 
+  - Median user words per session with progression analysis
+  - Median participant messages per session by method and version
+  - Outlier filtering for extreme sessions (>50 messages or >1000 words)
+- **Interactive Charts**: Line graphs showing session progression over time with outlier filtering
 - **Method Detection**: Automatic detection of coaching methods (Scenario, Microlearning, etc.)
 - **Enhanced Rating Detection**: Comprehensive pattern matching for 68% rating extraction (vs. 0.07% basic)
 - **Data Quality Filtering**: Excludes split sessions and test sessions for accurate analysis
 - **Dynamic Statistics**: Real-time rating coverage metrics displayed as footnotes
+- **Outlier Detection**: Advanced filtering to exclude training sessions and extreme user interactions
 
 ## Quick Start
 
 1. **Generate Dashboard**:
-   ```bash
-   python version_comparison_simple.py
+```bash
+python version_comparison_simple.py
    ```
 
 2. **View Dashboard**:
@@ -42,8 +46,9 @@ The dashboard expects data files in the following structure:
 - Average FLW score by method and version
 
 ### User Engagement Tab
-- Median user words per session by method and version
-- Session progression analysis with interactive line graphs
+- Median number of participant messages per session by method and version
+- Median user words per session by method and version (with outlier filtering)
+- Session progression analysis with interactive line graphs and outlier filtering
 
 ### Definitions Tab
 - Version definitions and experiment ID mappings
@@ -56,8 +61,18 @@ The dashboard applies comprehensive filtering to ensure data quality:
 
 - **Split Sessions Excluded**: Sessions with no participant messages (bot-only interactions)
 - **Test Sessions Excluded**: Sessions with participant IDs ending in @dimagi.com (internal testing)
+- **Outlier Sessions Filtered**: Optional filtering of extreme sessions (>50 messages or >1000 words)
 - **Consistent Filtering**: All tables, graphs, and metrics use the same exclusion criteria
 - **Enhanced Rating Detection**: Comprehensive pattern matching improves rating extraction from 0.07% to 68% of sessions
+
+### Outlier Detection
+
+The dashboard includes advanced outlier detection to identify and optionally exclude extreme sessions:
+
+- **Message Count Threshold**: Sessions with >50 participant messages
+- **Word Count Threshold**: Sessions with >1000 total participant words
+- **Training Session Detection**: Identifies intensive practice/training sessions
+- **Interactive Filtering**: Checkboxes allow real-time toggling between filtered and unfiltered views
 
 ## Version Detection
 

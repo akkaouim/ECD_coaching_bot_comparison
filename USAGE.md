@@ -57,12 +57,14 @@ The dashboard consists of five main sections:
 
 3. **Method-Based Analysis Tables**
    - Refrigerator example rate by method and version
-   - Median user words per session by method and version
+   - Median number of participant messages per session by method and version
+   - Median user words per session by method and version (with outlier filtering)
    - Average FLW score by method and version (with dynamic rating statistics)
 
 4. **Session Progression Analysis**
    - Interactive line graph with Chart.js
    - Dropdown to switch between view options
+   - Outlier filtering checkbox for extreme sessions
    - Shows user verbosity progression across sessions
 
 5. **Definitions Section**
@@ -104,9 +106,15 @@ The dashboard consists of five main sections:
 - **Method Detection**: Based on session tags (`coach_method_*`) or message content analysis
 - **Interpretation**: Higher percentages indicate more specific coaching scenarios for that method and version
 
+#### Median Number of Participant Messages per Session by Method and Version
+- **What it measures**: Median number of participant messages per session, grouped by coaching method and bot version
+- **Calculation**: Median of total user message count across all sessions for each method-version combination
+- **Interpretation**: Higher numbers indicate more interactive sessions for that method and version
+
 #### Median User Words per Session by Method and Version
 - **What it measures**: Median word count of user messages per session, grouped by coaching method and bot version
 - **Calculation**: Median of total user words across all sessions for each method-version combination
+- **Outlier Filtering**: Optional checkbox to exclude sessions with >50 messages or >1000 words
 - **Session Numbering**: Chronological order per participant for line graph analysis
 - **Interpretation**: Higher numbers indicate more detailed user interactions for that method and version
 
@@ -121,6 +129,7 @@ The dashboard consists of five main sections:
 - **X-axis**: Session number (1st, 2nd, 3rd, etc. session for each participant)
 - **Y-axis**: Average number of words per session
 - **View Options**: By method, by method and version, or by version only
+- **Outlier Filtering**: Checkbox to exclude extreme sessions (>50 messages or >1000 words)
 - **Data Limit**: First 22 sessions per participant
 - **Interpretation**: Shows if users become more or less verbose over time
 

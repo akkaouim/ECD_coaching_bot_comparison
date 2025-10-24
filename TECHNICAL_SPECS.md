@@ -36,8 +36,10 @@ The system now includes comprehensive filtering and enhanced detection:
 
 - **Split Session Detection**: Identifies sessions with no participant messages
 - **Test Session Detection**: Filters out sessions with @dimagi.com participant IDs
+- **Outlier Session Detection**: Identifies extreme sessions (>50 messages or >1000 words)
 - **Enhanced Rating Detection**: Comprehensive pattern matching for 68% rating extraction
 - **Consistent Filtering**: All metrics use the same exclusion criteria
+- **Interactive Filtering**: Real-time toggling between filtered and unfiltered views
 
 ## 📊 Data Specifications
 
@@ -105,6 +107,10 @@ The system now includes comprehensive filtering and enhanced detection:
     'median_words_by_method': {
         'Scenario': {'V6': 24.3},
         'Microlearning': {'V6': 19.7}
+    },
+    'median_messages_by_method': {
+        'Scenario': {'V6': 8.5},
+        'Microlearning': {'V6': 6.2}
     },
     'average_rating_by_method': {
         'Scenario': {'V6': 4.2},
@@ -192,7 +198,19 @@ def should_exclude_session(session, messages):
     if is_test_session(session):
         return True
     
+    # 3. Check for outlier sessions (extreme interaction patterns)
+    if is_outlier_session(session, messages):
+        return True
+    
     return False
+
+def is_outlier_session(session_messages, user_message_count, user_words):
+    # Check for extreme interaction patterns
+    message_threshold = 50  # Sessions with >50 user messages
+    word_threshold = 1000   # Sessions with >1000 user words
+    
+    return (user_message_count > message_threshold or 
+            user_words > word_threshold)
 
 def is_split_session(session, messages):
     # Check if session has no participant messages
