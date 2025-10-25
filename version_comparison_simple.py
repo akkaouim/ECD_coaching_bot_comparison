@@ -884,7 +884,7 @@ class SimpleVersionComparisonDashboard:
                         else:
                             method_rating = 0.0
                     
-                    if method_rating > 0:
+                    if method_rating and method_rating > 0:
                         row += f"<td>{method_rating:.2f}</td>"
                     else:
                         row += f"<td>-</td>"
@@ -912,7 +912,10 @@ class SimpleVersionComparisonDashboard:
             for metric in metrics:
                 method_rates = metric.get('method_refrigerator_rates', {})
                 rate = method_rates.get(method, 0.0)
-                row += f"<td>{rate:.1f}%</td>"
+                if rate and rate > 0:
+                    row += f"<td>{rate:.1f}%</td>"
+                else:
+                    row += f"<td>-</td>"
             row += "</tr>"
             rows += row
         
