@@ -30,8 +30,12 @@ class SimpleVersionComparisonDashboard:
         
         # Define coaching bot versions based on experiment IDs
         self.coaching_bot_versions = {
+            "Control bot": {
+                "experiment_id": ["1027993a-40c9-4484-a5fb-5c7e034dadcd"],
+                "version_range": None  # All versions
+            },
             "Coaching bot V3": {
-                "experiment_id": ["e2b4855f-8550-47ff-87d2-d92018676ff3", "1027993a-40c9-4484-a5fb-5c7e034dadcd"],
+                "experiment_id": ["e2b4855f-8550-47ff-87d2-d92018676ff3"],
                 "version_range": None  # All versions
             },
             "Coaching bot V4": {
@@ -59,7 +63,7 @@ class SimpleVersionComparisonDashboard:
         relevant_experiment_ids = set()
         for version_config in self.coaching_bot_versions.values():
             relevant_experiment_ids.update(version_config['experiment_id'])
-
+        
         print(f"Loading sessions from {sessions_dir}")
         print(f"Looking for experiment IDs: {list(relevant_experiment_ids)}")
         
@@ -81,7 +85,7 @@ class SimpleVersionComparisonDashboard:
                 
                 experiment_id = session.get('experiment', {}).get('id', '')
                 if experiment_id in relevant_experiment_ids:
-                    filtered_sessions.append(session)
+                        filtered_sessions.append(session)
             except Exception as e:
                 print(f"Warning: Could not load {session_file.name}: {e}")
                 continue
@@ -367,7 +371,7 @@ class SimpleVersionComparisonDashboard:
         # Initialize structure
         for method in ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown']:
             method_version_words[method] = {}
-            for version in ['V3', 'V4', 'V5', 'V6']:
+            for version in ['V3', 'V4', 'V5', 'V6', 'Control']:
                 method_version_words[method][version] = []
         
         # Collect word counts for each method-version combination
@@ -379,22 +383,32 @@ class SimpleVersionComparisonDashboard:
             if self.should_exclude_session(session, session_messages):
                 continue
             
-            # Detect coaching method
-            detected_method = self.detect_coaching_method(session, session_messages)
-            
-            # Determine version
+            # Determine version and method
             version = None
-            for version_name, version_config in self.coaching_bot_versions.items():
-                if self.matches_version(session, version_config, session_messages):
-                    if 'V3' in version_name:
-                        version = 'V3'
-                    elif 'V4' in version_name:
-                        version = 'V4'
-                    elif 'V5' in version_name:
-                        version = 'V5'
-                    elif 'V6' in version_name:
-                        version = 'V6'
-                    break
+            detected_method = None
+            
+            # Check if this is a Control bot session first
+            control_config = self.coaching_bot_versions.get('Control bot', {})
+            if self.matches_version(session, control_config, session_messages):
+                # Control bot sessions should all be categorized as "Unknown"
+                detected_method = 'Unknown'
+                version = 'Control'  # Use a special identifier for Control bot
+            else:
+                # For coaching bots, detect method and version normally
+                detected_method = self.detect_coaching_method(session, session_messages)
+                
+                # Determine version
+                for version_name, version_config in self.coaching_bot_versions.items():
+                    if version_name != 'Control bot' and self.matches_version(session, version_config, session_messages):
+                        if 'V3' in version_name:
+                            version = 'V3'
+                        elif 'V4' in version_name:
+                            version = 'V4'
+                        elif 'V5' in version_name:
+                            version = 'V5'
+                        elif 'V6' in version_name:
+                            version = 'V6'
+                        break
             
             if detected_method and version:
                 # Calculate total user words and message count in this session
@@ -412,7 +426,9 @@ class SimpleVersionComparisonDashboard:
                     if self.is_outlier_session(session_messages, user_message_count, user_words):
                         continue
                 
-                if user_words > 0:
+                # For Control bot, include all sessions (even with 0 words)
+                # For coaching bots, only include sessions with words > 0
+                if version == 'Control' or user_words > 0:
                     method_version_words[detected_method][version].append(user_words)
         
         # Calculate medians
@@ -441,7 +457,7 @@ class SimpleVersionComparisonDashboard:
         # Initialize structure
         for method in ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown']:
             method_version_messages[method] = {}
-            for version in ['V3', 'V4', 'V5', 'V6']:
+            for version in ['V3', 'V4', 'V5', 'V6', 'Control']:
                 method_version_messages[method][version] = []
         
         # Collect message counts for each method-version combination
@@ -453,22 +469,32 @@ class SimpleVersionComparisonDashboard:
             if self.should_exclude_session(session, session_messages):
                 continue
             
-            # Detect coaching method
-            detected_method = self.detect_coaching_method(session, session_messages)
-            
-            # Determine version
+            # Determine version and method
             version = None
-            for version_name, version_config in self.coaching_bot_versions.items():
-                if self.matches_version(session, version_config, session_messages):
-                    if 'V3' in version_name:
-                        version = 'V3'
-                    elif 'V4' in version_name:
-                        version = 'V4'
-                    elif 'V5' in version_name:
-                        version = 'V5'
-                    elif 'V6' in version_name:
-                        version = 'V6'
-                    break
+            detected_method = None
+            
+            # Check if this is a Control bot session first
+            control_config = self.coaching_bot_versions.get('Control bot', {})
+            if self.matches_version(session, control_config, session_messages):
+                # Control bot sessions should all be categorized as "Unknown"
+                detected_method = 'Unknown'
+                version = 'Control'  # Use a special identifier for Control bot
+            else:
+                # For coaching bots, detect method and version normally
+                detected_method = self.detect_coaching_method(session, session_messages)
+                
+                # Determine version
+                for version_name, version_config in self.coaching_bot_versions.items():
+                    if version_name != 'Control bot' and self.matches_version(session, version_config, session_messages):
+                        if 'V3' in version_name:
+                            version = 'V3'
+                        elif 'V4' in version_name:
+                            version = 'V4'
+                        elif 'V5' in version_name:
+                            version = 'V5'
+                        elif 'V6' in version_name:
+                            version = 'V6'
+                        break
             
             if detected_method and version:
                 # Count user messages for this session
@@ -477,7 +503,9 @@ class SimpleVersionComparisonDashboard:
                     if message.get('role') == 'user':
                         user_message_count += 1
                 
-                if user_message_count > 0:
+                # For Control bot, include all sessions (even with 0 messages)
+                # For coaching bots, only include sessions with messages > 0
+                if version == 'Control' or user_message_count > 0:
                     method_version_messages[detected_method][version].append(user_message_count)
         
         # Calculate medians
@@ -708,21 +736,38 @@ class SimpleVersionComparisonDashboard:
         for method in sorted_methods:
             row = f"<tr><td><strong>{method}</strong></td>"
             for metric in metrics:
+                version_name = metric.get('version_name', '')
                 median_words = metric.get('median_words_by_method', {})
                 method_data = median_words.get(method, {})
-                v3_words = method_data.get('V3', 0.0)
-                v4_words = method_data.get('V4', 0.0)
-                v5_words = method_data.get('V5', 0.0)
-                v6_words = method_data.get('V6', 0.0)
                 
-                # Calculate average across versions for this method
-                version_counts = [v3_words, v4_words, v5_words, v6_words]
-                non_zero_counts = [count for count in version_counts if count > 0]
-                if non_zero_counts:
-                    avg_words = sum(non_zero_counts) / len(non_zero_counts)
-                    row += f"<td>{avg_words:.1f}</td>"
+                # Special handling for Control bot
+                if version_name == 'Control bot':
+                    if method == 'Unknown':
+                        # Show Control bot data only under Unknown
+                        if isinstance(method_data, dict):
+                            control_words = method_data.get('Control', 0.0)
+                        else:
+                            control_words = method_data if isinstance(method_data, (int, float)) else 0.0
+                        if control_words > 0:
+                            row += f"<td>{control_words:.1f}</td>"
+                        else:
+                            row += f"<td>0.0</td>"
+                    else:
+                        # Show hyphen for specific coaching methods
+                        row += f"<td>-</td>"
                 else:
-                    row += f"<td>0.0</td>"
+                    # Regular handling for coaching bots
+                    if isinstance(method_data, dict):
+                        # Get the value for this version
+                        version_key = version_name.replace('Coaching bot ', '')
+                        words = method_data.get(version_key, 0.0)
+                    else:
+                        words = method_data if isinstance(method_data, (int, float)) else 0.0
+                    
+                    if words > 0:
+                        row += f"<td>{words:.1f}</td>"
+                    else:
+                        row += f"<td>0.0</td>"
             row += "</tr>"
             rows += row
         
@@ -745,22 +790,41 @@ class SimpleVersionComparisonDashboard:
         for method in sorted_methods:
             row = f"<tr><td><strong>{method}</strong></td>"
             for metric in metrics:
+                version_name = metric.get('version_name', '')
                 median_messages_data = metric.get('median_messages_by_method', {})
                 method_messages = median_messages_data.get(method, 0.0)
                 
-                # Handle case where method_messages might be a dict
-                if isinstance(method_messages, dict):
-                    # Get the average across all versions for this method
-                    version_messages = [messages for messages in method_messages.values() if messages > 0]
-                    if version_messages:
-                        method_messages = sum(version_messages) / len(version_messages)
+                # Special handling for Control bot
+                if version_name == 'Control bot':
+                    if method == 'Unknown':
+                        # Show Control bot data only under Unknown
+                        if isinstance(method_messages, dict):
+                            control_messages = method_messages.get('Control', 0.0)
+                            if control_messages > 0:
+                                row += f"<td>{control_messages:.1f}</td>"
+                            else:
+                                row += f"<td>0.0</td>"
+                        else:
+                            if method_messages > 0:
+                                row += f"<td>{method_messages:.1f}</td>"
+                            else:
+                                row += f"<td>0.0</td>"
                     else:
-                        method_messages = 0.0
-                
-                if method_messages > 0:
-                    row += f"<td>{method_messages:.1f}</td>"
+                        # Show hyphen for specific coaching methods
+                        row += f"<td>-</td>"
                 else:
-                    row += f"<td>-</td>"
+                    # Regular handling for coaching bots
+                    if isinstance(method_messages, dict):
+                        # Get the value for this version
+                        version_key = version_name.replace('Coaching bot ', '')
+                        messages = method_messages.get(version_key, 0.0)
+                    else:
+                        messages = method_messages if isinstance(method_messages, (int, float)) else 0.0
+                    
+                    if messages > 0:
+                        row += f"<td>{messages:.1f}</td>"
+                    else:
+                        row += f"<td>-</td>"
             row += "</tr>"
             rows += row
 
@@ -1006,11 +1070,8 @@ class SimpleVersionComparisonDashboard:
         # Calculate average session rating
         avg_rating = self.calculate_average_rating(valid_sessions, messages_data)
         
-        # Calculate median words by method and version
-        median_words_by_method = self.calculate_median_words_by_method_and_version(valid_sessions, messages_data)
-        
-        # Calculate median messages by method and version
-        median_messages_by_method = self.calculate_median_messages_by_method_and_version(valid_sessions, messages_data)
+        # Note: median_words_by_method and median_messages_by_method are calculated globally
+        # and added to each metric in the main generation loop
         
         # Calculate average rating by method and version
         average_rating_by_method = self.calculate_average_rating_by_method_and_version(valid_sessions, messages_data)
@@ -1023,8 +1084,6 @@ class SimpleVersionComparisonDashboard:
             'method_refrigerator_rates': method_refrigerator_rates,
             'median_human_words_per_session': median_words,
             'average_session_rating': avg_rating,
-            'median_words_by_method': median_words_by_method,
-            'median_messages_by_method': median_messages_by_method,
             'average_rating_by_method': average_rating_by_method
         }
     
@@ -1145,7 +1204,7 @@ class SimpleVersionComparisonDashboard:
                 <div class="tab-content" id="dashboardTabContent">
                     <!-- Summary Tab -->
                     <div class="tab-pane fade show active" id="summary" role="tabpanel" aria-labelledby="summary-tab">
-                     <div class="row">
+        <div class="row">
             <div class="col-12">
                 <div class="card">
                     <div class="card-header">
@@ -1169,12 +1228,12 @@ class SimpleVersionComparisonDashboard:
                                 </tbody>
                             </table>
                         </div>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
-                    </div>
-                    
+
                     <!-- Performance Tab -->
                     <div class="tab-pane fade" id="performance" role="tabpanel" aria-labelledby="performance-tab">
                         <div class="row mt-4">
@@ -1335,17 +1394,18 @@ class SimpleVersionComparisonDashboard:
                     
                     <!-- Definitions Tab -->
                     <div class="tab-pane fade" id="definitions" role="tabpanel" aria-labelledby="definitions-tab">
-                        <div class="row mt-4">
-                            <div class="col-12">
-                                <div class="card">
-                                    <div class="card-header">
-                                        <h3>Definitions</h3>
-                                    </div>
-                                    <div class="card-body">
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Definitions</h3>
+                    </div>
+                    <div class="card-body">
                                         <h5>Version Definitions</h5>
-                                        <p>This dashboard compares four coaching bot versions based on experiment IDs and version ranges:</p>
+                                        <p>This dashboard compares five bot categories based on experiment IDs and version ranges:</p>
                                         <ul>
-                                            <li><strong>Coaching bot V3:</strong> Experiment IDs: E2b4855f-8550-47ff-87d2-d92018676ff3 or 1027993a-40c9-4484-a5fb-5c7e034dadcd (All versions)</li>
+                                            <li><strong>Control bot:</strong> Experiment ID: 1027993a-40c9-4484-a5fb-5c7e034dadcd (All versions)</li>
+                                            <li><strong>Coaching bot V3:</strong> Experiment ID: e2b4855f-8550-47ff-87d2-d92018676ff3 (All versions)</li>
                                             <li><strong>Coaching bot V4:</strong> Experiment ID: b7621271-da98-459f-9f9b-f68335d09ad4 (Version 13 and above)</li>
                                             <li><strong>Coaching bot V5:</strong> Experiment ID: 5d8be75e-03ff-4e3a-ab6a-e0aff6580986 (Version 1 to 4)</li>
                                             <li><strong>Coaching bot V6:</strong> Experiment ID: 5d8be75e-03ff-4e3a-ab6a-e0aff6580986 (Version 5 and above)</li>
@@ -1498,19 +1558,24 @@ class SimpleVersionComparisonDashboard:
                         <h3>Definitions</h3>
                     </div>
                     <div class="card-body">
-                        <h5>Coaching Bot Versions</h5>
+                        <h5>Bot Categories</h5>
                         <table class="table table-sm">
                             <thead>
                                 <tr>
-                                    <th>Version</th>
+                                    <th>Category</th>
                                     <th>Experiment ID</th>
                                     <th>Version Range</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <tr>
+                                    <td><strong>Control bot</strong></td>
+                                    <td>1027993a-40c9-4484-a5fb-5c7e034dadcd</td>
+                                    <td>All versions</td>
+                                </tr>
+                                <tr>
                                     <td><strong>Coaching bot V3</strong></td>
-                                    <td>E2b4855f-8550-47ff-87d2-d92018676ff3<br/>or 1027993a-40c9-4484-a5fb-5c7e034dadcd</td>
+                                    <td>e2b4855f-8550-47ff-87d2-d92018676ff3</td>
                                     <td>All versions</td>
                                 </tr>
                                 <tr>
@@ -1743,6 +1808,40 @@ class SimpleVersionComparisonDashboard:
             # Calculate metrics
             metric = self.calculate_metrics_for_version(version_name, version_sessions, messages_data)
             metrics.append(metric)
+        
+        # Calculate median words and messages by method and version (needs all sessions)
+        print("Calculating median words and messages by method and version...")
+        median_words_by_method = self.calculate_median_words_by_method_and_version(sessions, messages_data)
+        median_messages_by_method = self.calculate_median_messages_by_method_and_version(sessions, messages_data)
+        
+        # Add the median data to each metric, filtered by version
+        for metric in metrics:
+            version_name = metric.get('version_name', '')
+            filtered_words = {}
+            filtered_messages = {}
+            
+            for method in median_words_by_method:
+                filtered_words[method] = {}
+                filtered_messages[method] = {}
+                
+                # For Control bot, only show data under Unknown method
+                if version_name == 'Control bot':
+                    if method == 'Unknown':
+                        # Show Control bot data
+                        filtered_words[method] = median_words_by_method[method].get('Control', {})
+                        filtered_messages[method] = median_messages_by_method[method].get('Control', {})
+                    else:
+                        # Show empty for specific methods
+                        filtered_words[method] = {}
+                        filtered_messages[method] = {}
+                else:
+                    # For coaching bots, show data for their version
+                    version_key = version_name.replace('Coaching bot ', '')
+                    filtered_words[method] = median_words_by_method[method].get(version_key, {})
+                    filtered_messages[method] = median_messages_by_method[method].get(version_key, {})
+            
+            metric['median_words_by_method'] = filtered_words
+            metric['median_messages_by_method'] = filtered_messages
         
         # Calculate session progression data for line graph (both with and without outliers)
         print("Calculating session progression data...")

@@ -135,14 +135,24 @@ The dashboard consists of five main sections:
 
 ## 🔧 Advanced Usage
 
-### Customizing Version Definitions
+### Bot Categories
+
+The dashboard compares five bot categories based on experiment IDs and version ranges:
+
+- **Control bot**: Experiment ID: 1027993a-40c9-4484-a5fb-5c7e034dadcd (All versions)
+- **Coaching bot V3**: Experiment ID: e2b4855f-8550-47ff-87d2-d92018676ff3 (All versions)
+- **Coaching bot V4**: Experiment ID: b7621271-da98-459f-9f9b-f68335d09ad4 (Version 13 and above)
+- **Coaching bot V5**: Experiment ID: 5d8be75e-03ff-4e3a-ab6a-e0aff6580986 (Version 1 to 4)
+- **Coaching bot V6**: Experiment ID: 5d8be75e-03ff-4e3a-ab6a-e0aff6580986 (Version 5 and above)
+
+### Customizing Bot Categories
 
 Edit the `coaching_bot_versions` dictionary in `version_comparison_simple.py`:
 
 ```python
 self.coaching_bot_versions = {
-    "Your Custom Version": {
-        "experiment_name": "Your Experiment Name",
+    "Your Custom Bot": {
+        "experiment_id": ["your-experiment-id"],
         "version_range": (min_version, max_version)  # or None for all versions
     }
 }

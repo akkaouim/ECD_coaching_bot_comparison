@@ -430,16 +430,28 @@ DEBUG=false
 TEST_MODE=false
 ```
 
-### Version Definitions
+### Bot Category Definitions
 ```python
 COACHING_BOT_VERSIONS = {
+    "Control bot": {
+        "experiment_id": ["1027993a-40c9-4484-a5fb-5c7e034dadcd"],
+        "version_range": None
+    },
     "Coaching bot V3": {
-        "experiment_name": "ECD Control Bot - Nigeria - Connect Experiments",
+        "experiment_id": ["e2b4855f-8550-47ff-87d2-d92018676ff3"],
         "version_range": None
     },
     "Coaching bot V4": {
-        "experiment_name": "ECD Coach - (Nigeria Experiments) V4",
-        "version_range": (23, None)
+        "experiment_id": ["b7621271-da98-459f-9f9b-f68335d09ad4"],
+        "version_range": (13, None)
+    },
+    "Coaching bot V5": {
+        "experiment_id": ["5d8be75e-03ff-4e3a-ab6a-e0aff6580986"],
+        "version_range": (1, 4)
+    },
+    "Coaching bot V6": {
+        "experiment_id": ["5d8be75e-03ff-4e3a-ab6a-e0aff6580986"],
+        "version_range": (5, None)
     }
 }
 ```

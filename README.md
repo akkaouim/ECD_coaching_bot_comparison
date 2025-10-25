@@ -1,6 +1,6 @@
 # Version Comparison Dashboard
 
-A web-based dashboard for comparing different versions of coaching bots in the OpenChatStudio (OCS) system.
+A web-based dashboard for comparing different bot categories in the OpenChatStudio (OCS) system, including Control bot and Coaching bot versions.
 
 ## Features
 
@@ -27,6 +27,16 @@ python version_comparison_simple.py
 2. **View Dashboard**:
    - Open `output/version_comparison/version_comparison_dashboard.html` in your browser
    - Or serve via HTTP: `cd output/version_comparison && python3 -m http.server 8002`
+
+## Bot Categories
+
+The dashboard compares five bot categories:
+
+- **Control bot**: Experiment ID: 1027993a-40c9-4484-a5fb-5c7e034dadcd (All versions)
+- **Coaching bot V3**: Experiment ID: e2b4855f-8550-47ff-87d2-d92018676ff3 (All versions)
+- **Coaching bot V4**: Experiment ID: b7621271-da98-459f-9f9b-f68335d09ad4 (Version 13 and above)
+- **Coaching bot V5**: Experiment ID: 5d8be75e-03ff-4e3a-ab6a-e0aff6580986 (Version 1 to 4)
+- **Coaching bot V6**: Experiment ID: 5d8be75e-03ff-4e3a-ab6a-e0aff6580986 (Version 5 and above)
 
 ## Data Requirements
 
