@@ -767,7 +767,7 @@ class SimpleVersionComparisonDashboard:
                     if words > 0:
                         row += f"<td>{words:.1f}</td>"
                     else:
-                        row += f"<td>0.0</td>"
+                        row += f"<td>-</td>"
             row += "</tr>"
             rows += row
         
