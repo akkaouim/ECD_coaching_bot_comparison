@@ -577,10 +577,10 @@ class SimpleVersionComparisonDashboard:
         # Initialize data structures
         for method in ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown']:
             progression_data['by_method'][method] = {}
-            for version in ['V3', 'V4', 'V5', 'V6']:
+            for version in ['V3', 'V4', 'V5', 'V6', 'Control']:
                 progression_data['by_method_version'][f"{method}_{version}"] = {}
         
-        for version in ['V3', 'V4', 'V5', 'V6']:
+        for version in ['V3', 'V4', 'V5', 'V6', 'Control']:
             progression_data['by_version'][version] = {}
         
         # Process each participant's sessions
@@ -618,7 +618,9 @@ class SimpleVersionComparisonDashboard:
                 version = None
                 for version_name, version_config in self.coaching_bot_versions.items():
                     if self.matches_version(session, version_config, session_messages):
-                        if 'V3' in version_name:
+                        if 'Control' in version_name:
+                            version = 'Control'
+                        elif 'V3' in version_name:
                             version = 'V3'
                         elif 'V4' in version_name:
                             version = 'V4'
@@ -666,7 +668,7 @@ class SimpleVersionComparisonDashboard:
         method_version_ratings = {}
         for method in ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown']:
             method_version_ratings[method] = {}
-            for version in ['V3', 'V4', 'V5', 'V6']:
+            for version in ['V3', 'V4', 'V5', 'V6', 'Control']:
                 method_version_ratings[method][version] = []
         
         # Process each session
@@ -690,7 +692,9 @@ class SimpleVersionComparisonDashboard:
             version = None
             for version_name, version_config in self.coaching_bot_versions.items():
                 if self.matches_version(session, version_config, session_messages):
-                    if 'V3' in version_name:
+                    if 'Control' in version_name:
+                        version = 'Control'
+                    elif 'V3' in version_name:
                         version = 'V3'
                     elif 'V4' in version_name:
                         version = 'V4'
@@ -700,8 +704,12 @@ class SimpleVersionComparisonDashboard:
                         version = 'V6'
                     break
             
-            if not detected_method or not version:
+            if not version:
                 continue
+            
+            # For Control bot, use 'Unknown' method if no method detected
+            if version == 'Control' and not detected_method:
+                detected_method = 'Unknown'
             
             # Add rating to the appropriate method-version combination
             method_version_ratings[detected_method][version].append(session_rating)
@@ -847,22 +855,39 @@ class SimpleVersionComparisonDashboard:
         for method in sorted_methods:
             row = f"<tr><td><strong>{method}</strong></td>"
             for metric in metrics:
+                version_name = metric.get('version_name', '')
                 rating_data = metric.get('average_rating_by_method', {})
                 method_rating = rating_data.get(method, 0.0)
                 
-                # Handle case where method_rating might be a dict
-                if isinstance(method_rating, dict):
-                    # Get the average across all versions for this method
-                    version_ratings = [rating for rating in method_rating.values() if rating > 0]
-                    if version_ratings:
-                        method_rating = sum(version_ratings) / len(version_ratings)
+                # Special handling for Control bot
+                if version_name == 'Control bot':
+                    if method == 'Unknown':
+                        # Show Control bot rating under Unknown method
+                        if isinstance(method_rating, dict):
+                            control_rating = method_rating.get('Control', 0.0)
+                        else:
+                            control_rating = method_rating if isinstance(method_rating, (int, float)) else 0.0
+                        if control_rating > 0:
+                            row += f"<td>{control_rating:.2f}</td>"
+                        else:
+                            row += f"<td>-</td>"
                     else:
-                        method_rating = 0.0
-                
-                if method_rating > 0:
-                    row += f"<td>{method_rating:.2f}</td>"
+                        # Show hyphen for specific coaching methods
+                        row += f"<td>-</td>"
                 else:
-                    row += f"<td>-</td>"
+                    # Regular handling for coaching bots
+                    if isinstance(method_rating, dict):
+                        # Get the average across all versions for this method
+                        version_ratings = [rating for rating in method_rating.values() if rating > 0]
+                        if version_ratings:
+                            method_rating = sum(version_ratings) / len(version_ratings)
+                        else:
+                            method_rating = 0.0
+                    
+                    if method_rating > 0:
+                        row += f"<td>{method_rating:.2f}</td>"
+                    else:
+                        row += f"<td>-</td>"
             row += "</tr>"
             rows += row
         
