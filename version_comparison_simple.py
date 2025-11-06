@@ -452,7 +452,7 @@ class SimpleVersionComparisonDashboard:
         
         return median_results
 
-    def calculate_median_messages_by_method_and_version(self, sessions: List[Dict], messages: Dict) -> Dict[str, Dict[str, float]]:
+    def calculate_median_messages_by_method_and_version(self, sessions: List[Dict], messages: Dict, exclude_outliers: bool = False) -> Dict[str, Dict[str, float]]:
         """Calculate median number of participant messages per session grouped by coaching method and version"""
         method_version_messages = {}
         
@@ -499,11 +499,20 @@ class SimpleVersionComparisonDashboard:
                         break
             
             if detected_method and version:
-                # Count user messages for this session
+                # Count user messages and words for this session
                 user_message_count = 0
+                user_words = 0
                 for message in session_messages:
                     if message.get('role') == 'user':
                         user_message_count += 1
+                        content = message.get('content', '')
+                        if content:
+                            user_words += len(content.split())
+                
+                # Apply outlier filtering if requested
+                if exclude_outliers:
+                    if self.is_outlier_session(session_messages, user_message_count, user_words):
+                        continue
                 
                 # For Control bot, include all sessions (even with 0 messages)
                 # For coaching bots, only include sessions with messages > 0
@@ -854,12 +863,17 @@ class SimpleVersionComparisonDashboard:
         methods = ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown']
         versions = ['Control', 'V3', 'V4', 'V5', 'V6']
         
+        # Store values for global calculation
+        global_values = [[] for _ in metrics]
+        all_versions_values = []  # For "All Versions" column
+        
         rows = ""
         for method in methods:
             row = f"<tr><td><strong>{method}</strong></td>"
+            method_all_versions = []  # Collect values across all versions for this method
             
             # Map version names from metrics to version keys
-            for metric in metrics:
+            for idx, metric in enumerate(metrics):
                 version_name = metric.get('version_name', '')
                 version_key = None
                 
@@ -878,13 +892,46 @@ class SimpleVersionComparisonDashboard:
                     count = volume_summary[version_key].get(method, 0)
                     if count > 0:
                         row += f"<td>{count}</td>"
+                        global_values[idx].append(count)
+                        method_all_versions.append(count)
                     else:
                         row += f"<td>-</td>"
                 else:
                     row += f"<td>-</td>"
             
+            # Add "All Versions" column for this method
+            if method_all_versions:
+                all_versions_total = sum(method_all_versions)
+                row += f"<td style='font-weight: bold;'>{all_versions_total}</td>"
+                all_versions_values.append(all_versions_total)
+            else:
+                row += "<td>-</td>"
+                all_versions_values.append(0)
+            
             row += "</tr>"
             rows += row
+        
+        # Add Total row
+        total_row = '<tr style="background-color: #f8f9fa;"><td><strong>Total (All Methods)</strong></td>'
+        for idx, values in enumerate(global_values):
+            if values:
+                total_sum = sum(values)
+                total_row += f"<td style='font-weight: bold;'>{total_sum}</td>"
+            else:
+                total_row += "<td>-</td>"
+        
+        # Add "All Versions" column for Total row
+        if all_versions_values:
+            total_all_versions = sum([v for v in all_versions_values if v > 0])
+            if total_all_versions > 0:
+                total_row += f"<td style='font-weight: bold;'>{total_all_versions}</td>"
+            else:
+                total_row += "<td>-</td>"
+        else:
+            total_row += "<td>-</td>"
+        
+        total_row += "</tr>"
+        rows += total_row
         
         return rows
     
@@ -901,10 +948,16 @@ class SimpleVersionComparisonDashboard:
         sorted_methods = [method for method in method_order if method in all_methods]
         sorted_methods.extend([method for method in all_methods if method not in method_order])
         
+        # Store values for global calculation (per version and across all versions)
+        global_values = [[] for _ in metrics]
+        all_versions_values = []  # For "All Versions" column
+        
         rows = ""
         for method in sorted_methods:
             row = f"<tr><td><strong>{method}</strong></td>"
-            for metric in metrics:
+            method_all_versions = []  # Collect values across all versions for this method
+            
+            for idx, metric in enumerate(metrics):
                 version_name = metric.get('version_name', '')
                 median_words = metric.get('median_words_by_method', {})
                 method_data = median_words.get(method, {})
@@ -919,6 +972,8 @@ class SimpleVersionComparisonDashboard:
                             control_words = method_data if isinstance(method_data, (int, float)) else 0.0
                         if control_words > 0:
                             row += f"<td>{control_words:.1f}</td>"
+                            global_values[idx].append(control_words)
+                            method_all_versions.append(control_words)
                         else:
                             row += f"<td>0.0</td>"
                     else:
@@ -935,10 +990,59 @@ class SimpleVersionComparisonDashboard:
                     
                     if words > 0:
                         row += f"<td>{words:.1f}</td>"
+                        global_values[idx].append(words)
+                        method_all_versions.append(words)
                     else:
                         row += f"<td>-</td>"
+            
+            # Add "All Versions" column for this method
+            if method_all_versions:
+                method_all_versions_sorted = sorted(method_all_versions)
+                n = len(method_all_versions_sorted)
+                if n % 2 == 0:
+                    all_versions_median = (method_all_versions_sorted[n//2 - 1] + method_all_versions_sorted[n//2]) / 2
+                else:
+                    all_versions_median = method_all_versions_sorted[n//2]
+                row += f"<td style='font-weight: bold;'>{all_versions_median:.1f}</td>"
+                all_versions_values.append(all_versions_median)
+            else:
+                row += "<td>-</td>"
+                all_versions_values.append(0)
+            
             row += "</tr>"
             rows += row
+        
+        # Add Total row
+        total_row = '<tr style="background-color: #f8f9fa;"><td><strong>Total (All Methods)</strong></td>'
+        for idx, values in enumerate(global_values):
+            if values:
+                values_sorted = sorted(values)
+                n = len(values_sorted)
+                if n % 2 == 0:
+                    global_median = (values_sorted[n//2 - 1] + values_sorted[n//2]) / 2
+                else:
+                    global_median = values_sorted[n//2]
+                total_row += f"<td style='font-weight: bold;'>{global_median:.1f}</td>"
+            else:
+                total_row += "<td>-</td>"
+        
+        # Add "All Versions" column for Total row
+        if all_versions_values:
+            all_versions_sorted = sorted([v for v in all_versions_values if v > 0])
+            if all_versions_sorted:
+                n = len(all_versions_sorted)
+                if n % 2 == 0:
+                    total_all_versions = (all_versions_sorted[n//2 - 1] + all_versions_sorted[n//2]) / 2
+                else:
+                    total_all_versions = all_versions_sorted[n//2]
+                total_row += f"<td style='font-weight: bold;'>{total_all_versions:.1f}</td>"
+            else:
+                total_row += "<td>-</td>"
+        else:
+            total_row += "<td>-</td>"
+        
+        total_row += "</tr>"
+        rows += total_row
         
         return rows
 
@@ -955,10 +1059,16 @@ class SimpleVersionComparisonDashboard:
         sorted_methods = [method for method in method_order if method in all_methods]
         sorted_methods.extend([method for method in all_methods if method not in method_order])
 
+        # Store values for global calculation (per version and across all versions)
+        global_values = [[] for _ in metrics]
+        all_versions_values = []  # For "All Versions" column
+
         rows = ""
         for method in sorted_methods:
             row = f"<tr><td><strong>{method}</strong></td>"
-            for metric in metrics:
+            method_all_versions = []  # Collect values across all versions for this method
+            
+            for idx, metric in enumerate(metrics):
                 version_name = metric.get('version_name', '')
                 median_messages_data = metric.get('median_messages_by_method', {})
                 method_messages = median_messages_data.get(method, 0.0)
@@ -971,11 +1081,15 @@ class SimpleVersionComparisonDashboard:
                             control_messages = method_messages.get('Control', 0.0)
                             if control_messages > 0:
                                 row += f"<td>{control_messages:.1f}</td>"
+                                global_values[idx].append(control_messages)
+                                method_all_versions.append(control_messages)
                             else:
                                 row += f"<td>0.0</td>"
                         else:
                             if method_messages > 0:
                                 row += f"<td>{method_messages:.1f}</td>"
+                                global_values[idx].append(method_messages)
+                                method_all_versions.append(method_messages)
                             else:
                                 row += f"<td>0.0</td>"
                     else:
@@ -992,10 +1106,59 @@ class SimpleVersionComparisonDashboard:
                     
                     if messages > 0:
                         row += f"<td>{messages:.1f}</td>"
+                        global_values[idx].append(messages)
+                        method_all_versions.append(messages)
                     else:
                         row += f"<td>-</td>"
+            
+            # Add "All Versions" column for this method
+            if method_all_versions:
+                method_all_versions_sorted = sorted(method_all_versions)
+                n = len(method_all_versions_sorted)
+                if n % 2 == 0:
+                    all_versions_median = (method_all_versions_sorted[n//2 - 1] + method_all_versions_sorted[n//2]) / 2
+                else:
+                    all_versions_median = method_all_versions_sorted[n//2]
+                row += f"<td style='font-weight: bold;'>{all_versions_median:.1f}</td>"
+                all_versions_values.append(all_versions_median)
+            else:
+                row += "<td>-</td>"
+                all_versions_values.append(0)
+            
             row += "</tr>"
             rows += row
+
+        # Add Total row
+        total_row = '<tr style="background-color: #f8f9fa;"><td><strong>Total (All Methods)</strong></td>'
+        for idx, values in enumerate(global_values):
+            if values:
+                values_sorted = sorted(values)
+                n = len(values_sorted)
+                if n % 2 == 0:
+                    global_median = (values_sorted[n//2 - 1] + values_sorted[n//2]) / 2
+                else:
+                    global_median = values_sorted[n//2]
+                total_row += f"<td style='font-weight: bold;'>{global_median:.1f}</td>"
+            else:
+                total_row += "<td>-</td>"
+        
+        # Add "All Versions" column for Total row
+        if all_versions_values:
+            all_versions_sorted = sorted([v for v in all_versions_values if v > 0])
+            if all_versions_sorted:
+                n = len(all_versions_sorted)
+                if n % 2 == 0:
+                    total_all_versions = (all_versions_sorted[n//2 - 1] + all_versions_sorted[n//2]) / 2
+                else:
+                    total_all_versions = all_versions_sorted[n//2]
+                total_row += f"<td style='font-weight: bold;'>{total_all_versions:.1f}</td>"
+            else:
+                total_row += "<td>-</td>"
+        else:
+            total_row += "<td>-</td>"
+        
+        total_row += "</tr>"
+        rows += total_row
 
         return rows
 
@@ -1012,10 +1175,16 @@ class SimpleVersionComparisonDashboard:
         sorted_methods = [method for method in method_order if method in all_methods]
         sorted_methods.extend([method for method in all_methods if method not in method_order])
         
+        # Store values for global calculation
+        global_values = [[] for _ in metrics]
+        all_versions_values = []  # For "All Versions" column
+        
         rows = ""
         for method in sorted_methods:
             row = f"<tr><td><strong>{method}</strong></td>"
-            for metric in metrics:
+            method_all_versions = []  # Collect values across all versions for this method
+            
+            for idx, metric in enumerate(metrics):
                 version_name = metric.get('version_name', '')
                 rating_data = metric.get('average_rating_by_method', {})
                 method_rating = rating_data.get(method, 0.0)
@@ -1030,6 +1199,8 @@ class SimpleVersionComparisonDashboard:
                             control_rating = method_rating if isinstance(method_rating, (int, float)) else 0.0
                         if control_rating > 0:
                             row += f"<td>{control_rating:.2f}</td>"
+                            global_values[idx].append(control_rating)
+                            method_all_versions.append(control_rating)
                         else:
                             row += f"<td>-</td>"
                     else:
@@ -1047,10 +1218,45 @@ class SimpleVersionComparisonDashboard:
                     
                     if method_rating and method_rating > 0:
                         row += f"<td>{method_rating:.2f}</td>"
+                        global_values[idx].append(method_rating)
+                        method_all_versions.append(method_rating)
                     else:
                         row += f"<td>-</td>"
+            
+            # Add "All Versions" column for this method
+            if method_all_versions:
+                all_versions_avg = sum(method_all_versions) / len(method_all_versions)
+                row += f"<td style='font-weight: bold;'>{all_versions_avg:.2f}</td>"
+                all_versions_values.append(all_versions_avg)
+            else:
+                row += "<td>-</td>"
+                all_versions_values.append(0)
+            
             row += "</tr>"
             rows += row
+        
+        # Add Total row
+        total_row = '<tr style="background-color: #f8f9fa;"><td><strong>Total (All Methods)</strong></td>'
+        for idx, values in enumerate(global_values):
+            if values:
+                total_avg = sum(values) / len(values)
+                total_row += f"<td style='font-weight: bold;'>{total_avg:.2f}</td>"
+            else:
+                total_row += "<td>-</td>"
+        
+        # Add "All Versions" column for Total row
+        if all_versions_values:
+            all_versions_filtered = [v for v in all_versions_values if v > 0]
+            if all_versions_filtered:
+                total_all_versions = sum(all_versions_filtered) / len(all_versions_filtered)
+                total_row += f"<td style='font-weight: bold;'>{total_all_versions:.2f}</td>"
+            else:
+                total_row += "<td>-</td>"
+        else:
+            total_row += "<td>-</td>"
+        
+        total_row += "</tr>"
+        rows += total_row
         
         return rows
     
@@ -1067,18 +1273,59 @@ class SimpleVersionComparisonDashboard:
         sorted_methods = [method for method in method_order if method in all_methods]
         sorted_methods.extend([method for method in all_methods if method not in method_order])
         
+        # Store values for global calculation
+        global_values = [[] for _ in metrics]
+        all_versions_values = []  # For "All Versions" column
+        
         rows = ""
         for method in sorted_methods:
             row = f"<tr><td><strong>{method}</strong></td>"
-            for metric in metrics:
+            method_all_versions = []  # Collect values across all versions for this method
+            
+            for idx, metric in enumerate(metrics):
                 method_rates = metric.get('method_refrigerator_rates', {})
                 rate = method_rates.get(method, 0.0)
                 if rate and rate > 0:
                     row += f"<td>{rate:.1f}%</td>"
+                    global_values[idx].append(rate)
+                    method_all_versions.append(rate)
                 else:
                     row += f"<td>-</td>"
+            
+            # Add "All Versions" column for this method
+            if method_all_versions:
+                all_versions_avg = sum(method_all_versions) / len(method_all_versions)
+                row += f"<td style='font-weight: bold;'>{all_versions_avg:.1f}%</td>"
+                all_versions_values.append(all_versions_avg)
+            else:
+                row += "<td>-</td>"
+                all_versions_values.append(0)
+            
             row += "</tr>"
             rows += row
+        
+        # Add Total row
+        total_row = '<tr style="background-color: #f8f9fa;"><td><strong>Total (All Methods)</strong></td>'
+        for idx, values in enumerate(global_values):
+            if values:
+                total_avg = sum(values) / len(values)
+                total_row += f"<td style='font-weight: bold;'>{total_avg:.1f}%</td>"
+            else:
+                total_row += "<td>-</td>"
+        
+        # Add "All Versions" column for Total row
+        if all_versions_values:
+            all_versions_filtered = [v for v in all_versions_values if v > 0]
+            if all_versions_filtered:
+                total_all_versions = sum(all_versions_filtered) / len(all_versions_filtered)
+                total_row += f"<td style='font-weight: bold;'>{total_all_versions:.1f}%</td>"
+            else:
+                total_row += "<td>-</td>"
+        else:
+            total_row += "<td>-</td>"
+        
+        total_row += "</tr>"
+        rows += total_row
         
         return rows
     
@@ -1280,6 +1527,12 @@ class SimpleVersionComparisonDashboard:
         """Generate complete dashboard HTML"""
         # Generate summary table
         table_rows = ""
+        total_sessions = 0
+        total_annotated = 0
+        total_refrigerator_count = 0
+        median_words_list = []
+        ratings_list = []
+        
         for metric in metrics:
             table_rows += f"""
                             <tr>
@@ -1289,6 +1542,34 @@ class SimpleVersionComparisonDashboard:
                                 <td>{metric['refrigerator_examples_percent']:.1f}%</td>
                                 <td>{metric['median_human_words_per_session']:.1f}</td>
                                 <td>{metric['average_session_rating']:.2f}</td>
+                            </tr>
+            """
+            # Collect values for total row
+            total_sessions += metric['total_sessions']
+            total_annotated += metric['annotated_sessions']
+            # Calculate refrigerator count from percentage
+            if metric['annotated_sessions'] > 0:
+                refrigerator_count = int(metric['annotated_sessions'] * metric['refrigerator_examples_percent'] / 100)
+                total_refrigerator_count += refrigerator_count
+            if metric['median_human_words_per_session'] > 0:
+                median_words_list.append(metric['median_human_words_per_session'])
+            if metric['average_session_rating'] > 0:
+                ratings_list.append(metric['average_session_rating'])
+        
+        # Calculate totals for total row
+        total_refrigerator_percent = (total_refrigerator_count / total_annotated * 100) if total_annotated > 0 else 0.0
+        total_median_words = statistics.median(median_words_list) if median_words_list else 0.0
+        total_avg_rating = statistics.mean(ratings_list) if ratings_list else 0.0
+        
+        # Add Total row
+        table_rows += f"""
+                            <tr style="background-color: #f8f9fa;">
+                                <td><strong>Total (All Versions)</strong></td>
+                                <td style="font-weight: bold;">{total_sessions}</td>
+                                <td style="font-weight: bold;">{total_annotated}</td>
+                                <td style="font-weight: bold;">{total_refrigerator_percent:.1f}%</td>
+                                <td style="font-weight: bold;">{total_median_words:.1f}</td>
+                                <td style="font-weight: bold;">{total_avg_rating:.2f}</td>
                             </tr>
             """
         
@@ -1313,6 +1594,9 @@ class SimpleVersionComparisonDashboard:
         # Calculate total session counts by method and version for the summary table
         volume_summary = self.calculate_volume_summary(volume_data.get('week', {}) if volume_data else {})
         volume_summary_table_rows = self.generate_volume_summary_table_rows(volume_summary, metrics)
+        
+        # Convert metrics data to JSON for JavaScript (for dynamic table updates)
+        metrics_json = json.dumps(metrics) if metrics else "[]"
         
         html_content = f"""
 <!DOCTYPE html>
@@ -1448,7 +1732,7 @@ class SimpleVersionComparisonDashboard:
                                 </button>
                                 <small class="text-muted ms-3">
                                     <i class="fas fa-info-circle me-1"></i>
-                                    Note: Date filters work for the Session Volume chart. Summary tables require dashboard regeneration to reflect date/participant filters. Outlier filtering affects the progression line graph.
+                                    Note: Date filters work for the Session Volume chart. Summary tables require dashboard regeneration to reflect date/participant filters. Outlier filtering affects the progression line graph and median words/messages tables.
                                 </small>
                             </div>
                         </div>
@@ -1527,6 +1811,7 @@ class SimpleVersionComparisonDashboard:
                                                     <tr>
                                                         <th>Method</th>
                                                         {''.join([f'<th>{metric["version_name"]}</th>' for metric in metrics])}
+                                                        <th>All Versions</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
@@ -1552,6 +1837,7 @@ class SimpleVersionComparisonDashboard:
                                                     <tr>
                                                         <th>Method</th>
                                                         {''.join([f'<th>{metric["version_name"]}</th>' for metric in metrics])}
+                                                        <th>All Versions</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
@@ -1584,11 +1870,12 @@ class SimpleVersionComparisonDashboard:
                                     </div>
                                     <div class="card-body">
                                         <div class="table-responsive">
-                                            <table class="table table-striped table-hover">
+                                            <table class="table table-striped table-hover" id="medianMessagesTable">
                                                 <thead class="table-dark">
                                                     <tr>
                                                         <th>Method</th>
                                                         {''.join([f'<th>{metric["version_name"]}</th>' for metric in metrics])}
+                                                        <th>All Versions</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
@@ -1614,6 +1901,7 @@ class SimpleVersionComparisonDashboard:
                                                     <tr>
                                                         <th>Method</th>
                                                         {''.join([f'<th>{metric["version_name"]}</th>' for metric in metrics])}
+                                                        <th>All Versions</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
@@ -1699,6 +1987,7 @@ class SimpleVersionComparisonDashboard:
                                                     <tr>
                                                         <th>Method</th>
                                                         {''.join([f'<th>{metric["version_name"]}</th>' for metric in metrics])}
+                                                        <th>All Versions</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
@@ -1798,6 +2087,9 @@ class SimpleVersionComparisonDashboard:
         const volumeDataDay = {volume_data_day_json};
         const volumeDataWeek = {volume_data_week_json};
         const volumeDataMonth = {volume_data_month_json};
+        
+        // Metrics data from server (for dynamic table updates)
+        const metricsData = {metrics_json};
         
         let progressionChart = null;
         let volumeChart = null;
@@ -2046,6 +2338,241 @@ class SimpleVersionComparisonDashboard:
             }});
         }}
         
+        // Helper function to calculate median from array
+        function calculateMedian(values) {{
+            if (!values || values.length === 0) return 0;
+            const sorted = values.filter(v => v > 0).sort((a, b) => a - b);
+            if (sorted.length === 0) return 0;
+            const mid = Math.floor(sorted.length / 2);
+            return sorted.length % 2 === 0 
+                ? (sorted[mid - 1] + sorted[mid]) / 2 
+                : sorted[mid];
+        }}
+        
+        // Update median words table based on outlier filter
+        function updateMedianWordsTable() {{
+            const excludeOutliers = document.getElementById('excludeOutliersGlobal').checked;
+            const table = document.getElementById('medianWordsTable');
+            if (!table || !metricsData) return;
+            
+            const tbody = table.querySelector('tbody');
+            if (!tbody) return;
+            
+            // Clear existing rows
+            tbody.innerHTML = '';
+            
+            // Get all unique methods
+            const methods = ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown'];
+            
+            // Store values for global calculation (per version and across all versions)
+            const globalValues = metricsData.map(() => []);
+            const allVersionsValues = [];  // For "All Versions" column
+            
+            // Generate rows
+            methods.forEach(method => {{
+                const row = document.createElement('tr');
+                const methodCell = document.createElement('td');
+                methodCell.innerHTML = `<strong>${{method}}</strong>`;
+                row.appendChild(methodCell);
+                
+                const methodAllVersions = [];  // Collect values across all versions for this method
+                
+                metricsData.forEach((metric, idx) => {{
+                    const cell = document.createElement('td');
+                    const version_name = metric.version_name || '';
+                    const data = excludeOutliers ? metric.median_words_by_method_filtered : metric.median_words_by_method;
+                    const method_data = data[method] || {{}};
+                    
+                    let value = 0.0;
+                    if (version_name === 'Control bot') {{
+                        if (method === 'Unknown') {{
+                            value = typeof method_data === 'object' ? (method_data.Control || 0.0) : (method_data || 0.0);
+                        }}
+                    }} else {{
+                        const version_key = version_name.replace('Coaching bot ', '');
+                        value = typeof method_data === 'object' ? (method_data[version_key] || 0.0) : (method_data || 0.0);
+                    }}
+                    
+                    // Store value for global calculation
+                    if (value > 0) {{
+                        globalValues[idx].push(value);
+                        methodAllVersions.push(value);
+                    }}
+                    
+                    if (value > 0) {{
+                        cell.textContent = value.toFixed(1);
+                    }} else {{
+                        cell.textContent = '-';
+                    }}
+                    row.appendChild(cell);
+                }});
+                
+                // Add "All Versions" column for this method
+                const allVersionsCell = document.createElement('td');
+                if (methodAllVersions.length > 0) {{
+                    const allVersionsMedian = calculateMedian(methodAllVersions);
+                    if (allVersionsMedian > 0) {{
+                        allVersionsCell.textContent = allVersionsMedian.toFixed(1);
+                        allVersionsCell.style.fontWeight = 'bold';
+                        allVersionsValues.push(allVersionsMedian);
+                    }} else {{
+                        allVersionsCell.textContent = '-';
+                        allVersionsValues.push(0);
+                    }}
+                }} else {{
+                    allVersionsCell.textContent = '-';
+                    allVersionsValues.push(0);
+                }}
+                row.appendChild(allVersionsCell);
+                
+                tbody.appendChild(row);
+            }});
+            
+            // Add Total row
+            const totalRow = document.createElement('tr');
+            totalRow.style.backgroundColor = '#f8f9fa';
+            const totalCell = document.createElement('td');
+            totalCell.innerHTML = `<strong>Total (All Methods)</strong>`;
+            totalRow.appendChild(totalCell);
+            
+            globalValues.forEach(values => {{
+                const cell = document.createElement('td');
+                const globalMedian = calculateMedian(values);
+                if (globalMedian > 0) {{
+                    cell.textContent = globalMedian.toFixed(1);
+                    cell.style.fontWeight = 'bold';
+                }} else {{
+                    cell.textContent = '-';
+                }}
+                totalRow.appendChild(cell);
+            }});
+            
+            // Add "All Versions" column for Total row
+            const totalAllVersionsCell = document.createElement('td');
+            const totalAllVersionsMedian = calculateMedian(allVersionsValues.filter(v => v > 0));
+            if (totalAllVersionsMedian > 0) {{
+                totalAllVersionsCell.textContent = totalAllVersionsMedian.toFixed(1);
+                totalAllVersionsCell.style.fontWeight = 'bold';
+            }} else {{
+                totalAllVersionsCell.textContent = '-';
+            }}
+            totalRow.appendChild(totalAllVersionsCell);
+            
+            tbody.appendChild(totalRow);
+        }}
+        
+        // Update median messages table based on outlier filter
+        function updateMedianMessagesTable() {{
+            const excludeOutliers = document.getElementById('excludeOutliersGlobal').checked;
+            const table = document.getElementById('medianMessagesTable');
+            if (!table || !metricsData) return;
+            
+            const tbody = table.querySelector('tbody');
+            if (!tbody) return;
+            
+            // Clear existing rows
+            tbody.innerHTML = '';
+            
+            // Get all unique methods
+            const methods = ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown'];
+            
+            // Store values for global calculation (per version and across all versions)
+            const globalValues = metricsData.map(() => []);
+            const allVersionsValues = [];  // For "All Versions" column
+            
+            // Generate rows
+            methods.forEach(method => {{
+                const row = document.createElement('tr');
+                const methodCell = document.createElement('td');
+                methodCell.innerHTML = `<strong>${{method}}</strong>`;
+                row.appendChild(methodCell);
+                
+                const methodAllVersions = [];  // Collect values across all versions for this method
+                
+                metricsData.forEach((metric, idx) => {{
+                    const cell = document.createElement('td');
+                    const version_name = metric.version_name || '';
+                    const data = excludeOutliers ? metric.median_messages_by_method_filtered : metric.median_messages_by_method;
+                    const method_data = data[method] || {{}};
+                    
+                    let value = 0.0;
+                    if (version_name === 'Control bot') {{
+                        if (method === 'Unknown') {{
+                            value = typeof method_data === 'object' ? (method_data.Control || 0.0) : (method_data || 0.0);
+                        }}
+                    }} else {{
+                        const version_key = version_name.replace('Coaching bot ', '');
+                        value = typeof method_data === 'object' ? (method_data[version_key] || 0.0) : (method_data || 0.0);
+                    }}
+                    
+                    // Store value for global calculation
+                    if (value > 0) {{
+                        globalValues[idx].push(value);
+                        methodAllVersions.push(value);
+                    }}
+                    
+                    if (value > 0) {{
+                        cell.textContent = value.toFixed(1);
+                    }} else {{
+                        cell.textContent = '-';
+                    }}
+                    row.appendChild(cell);
+                }});
+                
+                // Add "All Versions" column for this method
+                const allVersionsCell = document.createElement('td');
+                if (methodAllVersions.length > 0) {{
+                    const allVersionsMedian = calculateMedian(methodAllVersions);
+                    if (allVersionsMedian > 0) {{
+                        allVersionsCell.textContent = allVersionsMedian.toFixed(1);
+                        allVersionsCell.style.fontWeight = 'bold';
+                        allVersionsValues.push(allVersionsMedian);
+                    }} else {{
+                        allVersionsCell.textContent = '-';
+                        allVersionsValues.push(0);
+                    }}
+                }} else {{
+                    allVersionsCell.textContent = '-';
+                    allVersionsValues.push(0);
+                }}
+                row.appendChild(allVersionsCell);
+                
+                tbody.appendChild(row);
+            }});
+            
+            // Add Total row
+            const totalRow = document.createElement('tr');
+            totalRow.style.backgroundColor = '#f8f9fa';
+            const totalCell = document.createElement('td');
+            totalCell.innerHTML = `<strong>Total (All Methods)</strong>`;
+            totalRow.appendChild(totalCell);
+            
+            globalValues.forEach(values => {{
+                const cell = document.createElement('td');
+                const globalMedian = calculateMedian(values);
+                if (globalMedian > 0) {{
+                    cell.textContent = globalMedian.toFixed(1);
+                    cell.style.fontWeight = 'bold';
+                }} else {{
+                    cell.textContent = '-';
+                }}
+                totalRow.appendChild(cell);
+            }});
+            
+            // Add "All Versions" column for Total row
+            const totalAllVersionsCell = document.createElement('td');
+            const totalAllVersionsMedian = calculateMedian(allVersionsValues.filter(v => v > 0));
+            if (totalAllVersionsMedian > 0) {{
+                totalAllVersionsCell.textContent = totalAllVersionsMedian.toFixed(1);
+                totalAllVersionsCell.style.fontWeight = 'bold';
+            }} else {{
+                totalAllVersionsCell.textContent = '-';
+            }}
+            totalRow.appendChild(totalAllVersionsCell);
+            
+            tbody.appendChild(totalRow);
+        }}
+        
         // Apply global filters to charts
         function applyGlobalFilters() {{
             // Update volume chart with date filters
@@ -2053,8 +2580,20 @@ class SimpleVersionComparisonDashboard:
                 updateVolumeChart();
             }}
             
-            // Note: Progression chart already respects outlier filter via updateProgressionChart()
-            // Date filtering for progression chart would require session-level date data
+            // Update progression chart with outlier filter
+            if (document.getElementById('progressionChart')) {{
+                updateProgressionChart();
+            }}
+            
+            // Update median words and messages tables with outlier filter
+            if (document.getElementById('medianWordsTable')) {{
+                updateMedianWordsTable();
+            }}
+            if (document.getElementById('medianMessagesTable')) {{
+                updateMedianMessagesTable();
+            }}
+            
+            // Note: Date filtering for progression chart would require session-level date data
             // which is not currently available in the JavaScript
             
             // Show feedback
@@ -2200,19 +2739,26 @@ class SimpleVersionComparisonDashboard:
             metrics.append(metric)
         
         # Calculate median words and messages by method and version (needs all sessions)
+        # Calculate both with and without outlier filtering
         print("Calculating median words and messages by method and version...")
-        median_words_by_method = self.calculate_median_words_by_method_and_version(sessions, messages_data)
-        median_messages_by_method = self.calculate_median_messages_by_method_and_version(sessions, messages_data)
+        median_words_by_method = self.calculate_median_words_by_method_and_version(sessions, messages_data, exclude_outliers=False)
+        median_words_by_method_filtered = self.calculate_median_words_by_method_and_version(sessions, messages_data, exclude_outliers=True)
+        median_messages_by_method = self.calculate_median_messages_by_method_and_version(sessions, messages_data, exclude_outliers=False)
+        median_messages_by_method_filtered = self.calculate_median_messages_by_method_and_version(sessions, messages_data, exclude_outliers=True)
         
-        # Add the median data to each metric, filtered by version
+        # Add the median data to each metric, filtered by version (both filtered and unfiltered)
         for metric in metrics:
             version_name = metric.get('version_name', '')
             filtered_words = {}
             filtered_messages = {}
+            filtered_words_outlier = {}
+            filtered_messages_outlier = {}
             
             for method in median_words_by_method:
                 filtered_words[method] = {}
                 filtered_messages[method] = {}
+                filtered_words_outlier[method] = {}
+                filtered_messages_outlier[method] = {}
                 
                 # For Control bot, only show data under Unknown method
                 if version_name == 'Control bot':
@@ -2220,18 +2766,26 @@ class SimpleVersionComparisonDashboard:
                         # Show Control bot data
                         filtered_words[method] = median_words_by_method[method].get('Control', {})
                         filtered_messages[method] = median_messages_by_method[method].get('Control', {})
+                        filtered_words_outlier[method] = median_words_by_method_filtered[method].get('Control', {})
+                        filtered_messages_outlier[method] = median_messages_by_method_filtered[method].get('Control', {})
                     else:
                         # Show empty for specific methods
                         filtered_words[method] = {}
                         filtered_messages[method] = {}
+                        filtered_words_outlier[method] = {}
+                        filtered_messages_outlier[method] = {}
                 else:
                     # For coaching bots, show data for their version
                     version_key = version_name.replace('Coaching bot ', '')
                     filtered_words[method] = median_words_by_method[method].get(version_key, {})
                     filtered_messages[method] = median_messages_by_method[method].get(version_key, {})
+                    filtered_words_outlier[method] = median_words_by_method_filtered[method].get(version_key, {})
+                    filtered_messages_outlier[method] = median_messages_by_method_filtered[method].get(version_key, {})
             
             metric['median_words_by_method'] = filtered_words
             metric['median_messages_by_method'] = filtered_messages
+            metric['median_words_by_method_filtered'] = filtered_words_outlier
+            metric['median_messages_by_method_filtered'] = filtered_messages_outlier
         
         # Calculate session progression data for line graph (both with and without outliers)
         print("Calculating session progression data...")
