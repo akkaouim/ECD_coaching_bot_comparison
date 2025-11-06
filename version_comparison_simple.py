@@ -162,16 +162,18 @@ class SimpleVersionComparisonDashboard:
         return 0
     
     def is_split_session(self, session: Dict, messages: List[Dict] = None) -> bool:
-        """Check if session is a split session - defined as session with no participant messages"""
+        """Check if session is a split session - defined as session with less than 3 participant messages"""
         if messages is None:
             return False
         
-        # Check if there are any user messages
+        # Count user messages
+        user_message_count = 0
         for message in messages:
             if message.get('role') == 'user':
-                return False  # Has user messages, not a split session
+                user_message_count += 1
         
-        return True  # No user messages found, this is a split session
+        # A split session has less than 3 user messages
+        return user_message_count < 3
     
     def is_test_session(self, session: Dict) -> bool:
         """Check if session is a test session - defined by participant ID being an email address like *@dimagi.com"""
@@ -726,7 +728,166 @@ class SimpleVersionComparisonDashboard:
                     average_ratings[method][version] = 0.0
         
         return average_ratings
-
+    
+    def calculate_session_volume_by_time(self, sessions: List[Dict], messages_data: Dict, aggregation: str = 'week') -> Dict:
+        """
+        Calculate session volume grouped by time period, version, and coaching method.
+        
+        Args:
+            sessions: List of session dictionaries
+            messages_data: Dictionary mapping session IDs to message lists
+            aggregation: 'day', 'week', or 'month' (default: 'week')
+        
+        Returns:
+            Dictionary with structure: {time_period: {version: {method: count}}}
+        """
+        from datetime import datetime, timedelta
+        from collections import defaultdict
+        
+        # Initialize data structure
+        volume_data = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
+        
+        # Process each session
+        for session in sessions:
+            session_id = session.get('id')
+            session_messages = messages_data.get(session_id, [])
+            
+            # Skip split sessions and test sessions
+            if self.should_exclude_session(session, session_messages):
+                continue
+            
+            # Get session created_at date
+            created_at_str = session.get('created_at', '')
+            if not created_at_str:
+                continue
+            
+            try:
+                # Parse ISO format date
+                created_at = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
+            except (ValueError, AttributeError):
+                continue
+            
+            # Determine time period based on aggregation
+            if aggregation == 'day':
+                time_key = created_at.strftime('%Y-%m-%d')
+            elif aggregation == 'week':
+                # Get the Monday of the week (ISO week)
+                monday = created_at - timedelta(days=created_at.weekday())
+                time_key = monday.strftime('%Y-%m-%d')
+            elif aggregation == 'month':
+                time_key = created_at.strftime('%Y-%m')
+            else:
+                time_key = created_at.strftime('%Y-%m-%d')
+            
+            # Detect coaching method
+            detected_method = self.detect_coaching_method(session, session_messages)
+            
+            # Determine version
+            version = None
+            for version_name, version_config in self.coaching_bot_versions.items():
+                if self.matches_version(session, version_config, session_messages):
+                    if 'Control' in version_name:
+                        version = 'Control'
+                    elif 'V3' in version_name:
+                        version = 'V3'
+                    elif 'V4' in version_name:
+                        version = 'V4'
+                    elif 'V5' in version_name:
+                        version = 'V5'
+                    elif 'V6' in version_name:
+                        version = 'V6'
+                    break
+            
+            if not version:
+                continue
+            
+            # For Control bot, use 'Unknown' method if no method detected
+            if version == 'Control' and not detected_method:
+                detected_method = 'Unknown'
+            
+            # Increment count
+            volume_data[time_key][version][detected_method] += 1
+        
+        # Convert to regular dict for JSON serialization
+        result = {}
+        for time_key in sorted(volume_data.keys()):
+            result[time_key] = {}
+            for version in ['Control', 'V3', 'V4', 'V5', 'V6']:
+                result[time_key][version] = {}
+                for method in ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown']:
+                    result[time_key][version][method] = volume_data[time_key][version][method]
+        
+        return result
+    
+    def calculate_volume_summary(self, volume_data: Dict) -> Dict:
+        """
+        Calculate total session counts by method and version across all time periods.
+        
+        Args:
+            volume_data: Dictionary with structure: {time_period: {version: {method: count}}}
+        
+        Returns:
+            Dictionary with structure: {version: {method: total_count}}
+        """
+        summary = {}
+        versions = ['Control', 'V3', 'V4', 'V5', 'V6']
+        methods = ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown']
+        
+        # Initialize structure
+        for version in versions:
+            summary[version] = {}
+            for method in methods:
+                summary[version][method] = 0
+        
+        # Aggregate counts across all time periods
+        for time_period, period_data in volume_data.items():
+            for version in versions:
+                if version in period_data:
+                    for method in methods:
+                        if method in period_data[version]:
+                            summary[version][method] += period_data[version][method]
+        
+        return summary
+    
+    def generate_volume_summary_table_rows(self, volume_summary: Dict, metrics: List[Dict]) -> str:
+        """Generate table rows for session volume summary by method and version"""
+        methods = ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown']
+        versions = ['Control', 'V3', 'V4', 'V5', 'V6']
+        
+        rows = ""
+        for method in methods:
+            row = f"<tr><td><strong>{method}</strong></td>"
+            
+            # Map version names from metrics to version keys
+            for metric in metrics:
+                version_name = metric.get('version_name', '')
+                version_key = None
+                
+                if version_name == 'Control bot':
+                    version_key = 'Control'
+                elif 'V3' in version_name:
+                    version_key = 'V3'
+                elif 'V4' in version_name:
+                    version_key = 'V4'
+                elif 'V5' in version_name:
+                    version_key = 'V5'
+                elif 'V6' in version_name:
+                    version_key = 'V6'
+                
+                if version_key and version_key in volume_summary:
+                    count = volume_summary[version_key].get(method, 0)
+                    if count > 0:
+                        row += f"<td>{count}</td>"
+                    else:
+                        row += f"<td>-</td>"
+                else:
+                    row += f"<td>-</td>"
+            
+            row += "</tr>"
+            rows += row
+        
+        return rows
+    
     def generate_median_words_table_rows(self, metrics: List[Dict]) -> str:
         """Generate table rows for median words by method and version"""
         # Get all unique methods across all versions
@@ -1115,7 +1276,7 @@ class SimpleVersionComparisonDashboard:
             'average_rating_by_method': average_rating_by_method
         }
     
-    def generate_dashboard_html(self, metrics: List[Dict], progression_data: Dict = None, rating_stats: Dict = None, progression_data_filtered: Dict = None) -> str:
+    def generate_dashboard_html(self, metrics: List[Dict], progression_data: Dict = None, rating_stats: Dict = None, progression_data_filtered: Dict = None, volume_data: Dict = None) -> str:
         """Generate complete dashboard HTML"""
         # Generate summary table
         table_rows = ""
@@ -1143,6 +1304,15 @@ class SimpleVersionComparisonDashboard:
         # Convert progression data to JSON for JavaScript
         progression_data_json = json.dumps(progression_data) if progression_data else "{}"
         progression_data_filtered_json = json.dumps(progression_data_filtered) if progression_data_filtered else "{}"
+        
+        # Convert volume data to JSON for JavaScript (all aggregation levels)
+        volume_data_day_json = json.dumps(volume_data.get('day', {})) if volume_data else "{}"
+        volume_data_week_json = json.dumps(volume_data.get('week', {})) if volume_data else "{}"
+        volume_data_month_json = json.dumps(volume_data.get('month', {})) if volume_data else "{}"
+        
+        # Calculate total session counts by method and version for the summary table
+        volume_summary = self.calculate_volume_summary(volume_data.get('week', {}) if volume_data else {})
+        volume_summary_table_rows = self.generate_volume_summary_table_rows(volume_summary, metrics)
         
         html_content = f"""
 <!DOCTYPE html>
@@ -1209,7 +1379,84 @@ class SimpleVersionComparisonDashboard:
             </div>
         </div>
 
-
+        <!-- Global Filters Section -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h4>
+                            <i class="fas fa-filter me-2"></i>Dashboard Filters
+                            <button class="btn btn-sm btn-light float-end" type="button" data-bs-toggle="collapse" data-bs-target="#filterCollapse" aria-expanded="false" aria-controls="filterCollapse" style="border: 2px solid #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+                                <i class="fas fa-chevron-down text-dark"></i>
+                            </button>
+                        </h4>
+                    </div>
+                    <div class="collapse" id="filterCollapse">
+                    <div class="card-body">
+                        <div class="row">
+                            <!-- Date Range Filter -->
+                            <div class="col-md-4">
+                                <label for="dateRange" class="form-label">Session Date Range:</label>
+                                <div class="input-group">
+                                    <input type="date" class="form-control" id="startDate" placeholder="Start Date">
+                                    <span class="input-group-text">to</span>
+                                    <input type="date" class="form-control" id="endDate" placeholder="End Date">
+                                </div>
+                            </div>
+                            
+                            <!-- Participant ID Filter -->
+                            <div class="col-md-4">
+                                <label for="participantFilter" class="form-label">Participant IDs:</label>
+                                <select class="form-select" id="participantFilter" multiple size="4">
+                                    <option value="">All Participants</option>
+                                    <!-- Participant options will be populated dynamically -->
+                                </select>
+                                <small class="form-text text-muted">Hold Ctrl/Cmd to select multiple participants</small>
+                            </div>
+                            
+                            <!-- Outlier Filter -->
+                            <div class="col-md-4">
+                                <label class="form-label">Data Quality Filters:</label>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="excludeOutliersGlobal" onchange="applyGlobalFilters()">
+                                    <label class="form-check-label" for="excludeOutliersGlobal">
+                                        Exclude outlier sessions (sessions with >50 messages or >1000 words)
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="excludeSplitSessions" onchange="applyGlobalFilters()" checked>
+                                    <label class="form-check-label" for="excludeSplitSessions">
+                                        Exclude split sessions (sessions with less than 3 participant messages)
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="excludeTestSessions" onchange="applyGlobalFilters()" checked>
+                                    <label class="form-check-label" for="excludeTestSessions">
+                                        Exclude test sessions (participant IDs ending with @dimagi.com)
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mt-3">
+                            <div class="col-12">
+                                <button class="btn btn-primary" onclick="applyGlobalFilters()">
+                                    <i class="fas fa-sync me-2"></i>Apply Filters
+                                </button>
+                                <button class="btn btn-secondary ms-2" onclick="resetGlobalFilters()">
+                                    <i class="fas fa-undo me-2"></i>Reset Filters
+                                </button>
+                                <small class="text-muted ms-3">
+                                    <i class="fas fa-info-circle me-1"></i>
+                                    Note: Date filters work for the Session Volume chart. Summary tables require dashboard regeneration to reflect date/participant filters. Outlier filtering affects the progression line graph.
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <!-- Tab Navigation -->
         <div class="row mt-4">
@@ -1223,6 +1470,9 @@ class SimpleVersionComparisonDashboard:
                     </li>
                     <li class="nav-item" role="presentation">
                         <button class="nav-link" id="engagement-tab" data-bs-toggle="tab" data-bs-target="#engagement" type="button" role="tab" aria-controls="engagement" aria-selected="false">User Engagement</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="volume-tab" data-bs-toggle="tab" data-bs-target="#volume" type="button" role="tab" aria-controls="volume" aria-selected="false">Session Volume</button>
                     </li>
                     <li class="nav-item" role="presentation">
                         <button class="nav-link" id="definitions-tab" data-bs-toggle="tab" data-bs-target="#definitions" type="button" role="tab" aria-controls="definitions" aria-selected="false">Definitions</button>
@@ -1358,14 +1608,6 @@ class SimpleVersionComparisonDashboard:
                                         <h3>Median User Words per Session by Method and Version</h3>
                                     </div>
                                     <div class="card-body">
-                                        <div class="mb-3">
-                                            <div class="form-check">
-                                                <input class="form-check-input" type="checkbox" id="excludeOutliers" onchange="toggleOutlierFilter()">
-                                                <label class="form-check-label" for="excludeOutliers">
-                                                    Exclude outlier sessions (sessions with >50 messages or >1000 words)
-                                                </label>
-                                            </div>
-                                        </div>
                                         <div class="table-responsive">
                                             <table class="table table-striped table-hover" id="medianWordsTable">
                                                 <thead class="table-dark">
@@ -1402,17 +1644,67 @@ class SimpleVersionComparisonDashboard:
                                                     </select>
                                                 </div>
                                                 <div class="col-md-6">
-                                                    <div class="form-check mt-4">
-                                                        <input class="form-check-input" type="checkbox" id="excludeOutliersProgression" onchange="updateProgressionChart()">
-                                                        <label class="form-check-label" for="excludeOutliersProgression">
-                                                            Exclude outlier sessions
-                                                        </label>
-                                                    </div>
+                                                    <!-- Outlier filtering now handled by global filters above -->
                                                 </div>
                                             </div>
                                         </div>
                                         <div class="chart-container" style="position: relative; height: 400px;">
                                             <canvas id="progressionChart"></canvas>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Session Volume Tab -->
+                    <div class="tab-pane fade" id="volume" role="tabpanel" aria-labelledby="volume-tab">
+                        <div class="row mt-4">
+                            <div class="col-12">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h3>Volume of Session per Coach Version</h3>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="mb-3">
+                                            <div class="row">
+                                                <div class="col-md-6">
+                                                    <label for="volumeAggregation" class="form-label">Aggregation Level:</label>
+                                                    <select class="form-select" id="volumeAggregation" onchange="updateVolumeChart()">
+                                                        <option value="day">Day</option>
+                                                        <option value="week" selected>Week</option>
+                                                        <option value="month">Month</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="chart-container" style="position: relative; height: 500px;">
+                                            <canvas id="volumeChart"></canvas>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mt-4">
+                            <div class="col-12">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h3>Session Count by Method and Version</h3>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="table-responsive">
+                                            <table class="table table-striped table-hover">
+                                                <thead class="table-dark">
+                                                    <tr>
+                                                        <th>Method</th>
+                                                        {''.join([f'<th>{metric["version_name"]}</th>' for metric in metrics])}
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {volume_summary_table_rows}
+                                                </tbody>
+                                            </table>
                                         </div>
                                     </div>
                                 </div>
@@ -1502,218 +1794,17 @@ class SimpleVersionComparisonDashboard:
         const progressionData = {progression_data_json};
         const progressionDataFiltered = {progression_data_filtered_json};
         
-        let progressionChart = null;
-        
-        function updateProgressionChart() {{
-                    <div class="card-body">
-                        <div class="table-responsive">
-                            <table class="table table-striped table-hover">
-                                <thead class="table-dark">
-                                    <tr>
-                                        <th>Method</th>
-                                        {''.join([f'<th>{metric["version_name"]}</th>' for metric in metrics])}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {rating_table_rows}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="row mt-4">
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header">
-                        <h3>Median User Words per Session by Method and Version</h3>
-                    </div>
-                    <div class="card-body">
-                        <div class="table-responsive">
-                            <table class="table table-striped table-hover">
-                                <thead class="table-dark">
-                                    <tr>
-                                        <th>Method</th>
-                                        {''.join([f'<th>{metric["version_name"]}</th>' for metric in metrics])}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {median_words_table_rows}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="row mt-4">
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header">
-                        <h3>Session Progression Analysis</h3>
-                    </div>
-                    <div class="card-body">
-                        <div class="mb-3">
-                            <label for="progressionView" class="form-label">Select View:</label>
-                            <select class="form-select" id="progressionView" onchange="updateProgressionChart()">
-                                <option value="by_method">By Coaching Method</option>
-                                <option value="by_method_version">By Method and Version</option>
-                                <option value="by_version">By Version Only</option>
-                            </select>
-                        </div>
-                        <div class="chart-container" style="position: relative; height: 400px;">
-                            <canvas id="progressionChart"></canvas>
-                        </div>
-                        <div class="mt-3">
-                            <small class="text-muted">
-                                <strong>X-axis:</strong> Session number (1st, 2nd, 3rd, etc. session for each participant)<br>
-                                <strong>Y-axis:</strong> Average number of words per session<br>
-                                <strong>Data:</strong> Limited to first 22 sessions per participant
-                            </small>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="row mt-4">
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header">
-                        <h3>Definitions</h3>
-                    </div>
-                    <div class="card-body">
-                        <h5>Bot Categories</h5>
-                        <table class="table table-sm">
-                            <thead>
-                                <tr>
-                                    <th>Category</th>
-                                    <th>Experiment ID</th>
-                                    <th>Version Range</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td><strong>Control bot</strong></td>
-                                    <td>1027993a-40c9-4484-a5fb-5c7e034dadcd</td>
-                                    <td>All versions</td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Coaching bot V3</strong></td>
-                                    <td>e2b4855f-8550-47ff-87d2-d92018676ff3</td>
-                                    <td>All versions</td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Coaching bot V4</strong></td>
-                                    <td>b7621271-da98-459f-9f9b-f68335d09ad4</td>
-                                    <td>13 and above</td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Coaching bot V5</strong></td>
-                                    <td>5d8be75e-03ff-4e3a-ab6a-e0aff6580986</td>
-                                    <td>1 to 4</td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Coaching bot V6</strong></td>
-                                    <td>5d8be75e-03ff-4e3a-ab6a-e0aff6580986</td>
-                                    <td>5 and above</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                        
-                        <h5 class="mt-4">Metric Definitions</h5>
-                        <ul>
-                            <li><strong>Sessions:</strong> Bot-initiated interactions excluding split sessions (sessions with no participant messages) and test sessions (participant ID ending with @dimagi.com)</li>
-                            <li><strong>Annotated Sessions:</strong> Sessions with non-version tags</li>
-                            <li><strong>Refrigeration Examples:</strong> Sessions with "refrigerator_example" tag</li>
-                            <li><strong>Median Human Words:</strong> Median word count of user messages per session</li>
-                            <li><strong>Average Session Rating:</strong> Mean rating (1-5) from user feedback</li>
-                        </ul>
-                        
-                        <h5 class="mt-4">Data Quality and Filtering</h5>
-                        <p>This dashboard applies comprehensive filtering to ensure data quality and consistency across all indicators:</p>
-                        <ul>
-                            <li><strong>Split Sessions Excluded:</strong> Sessions with no participant messages (bot-only interactions)</li>
-                            <li><strong>Test Sessions Excluded:</strong> Sessions with participant IDs ending in @dimagi.com (internal testing)</li>
-                            <li><strong>Consistent Filtering:</strong> All tables, graphs, and metrics use the same exclusion criteria</li>
-                            <li><strong>Enhanced Rating Detection:</strong> Comprehensive pattern matching improves rating extraction from 0.07% to 68% of sessions</li>
-                            <li><strong>Version Detection:</strong> Based on experiment IDs and version tags from the last message in each session</li>
-                        </ul>
-                        
-                        <h5 class="mt-4">Refrigerator Example Rate by Method</h5>
-                        <p>This metric shows the percentage of sessions with refrigerator examples within each coaching method.</p>
-                        <ul>
-                            <li><strong>Method Detection:</strong> Based on session tags (coach_method_*) or message content analysis</li>
-                            <li><strong>Calculation:</strong> (Sessions with "refrigerator_example" tag) / (Sessions with refrigerator annotations) × 100</li>
-                            <li><strong>Denominator:</strong> Sessions with "refrigerator_example" OR "not_refrigerator_example" tags</li>
-                            <li><strong>Numerator:</strong> Sessions with "refrigerator_example" tag</li>
-                        </ul>
-                        
-                        <h6>Coaching Methods:</h6>
-                        <ul>
-                            <li><strong>Scenario:</strong> Roleplay-based coaching sessions</li>
-                            <li><strong>Microlearning:</strong> Quiz-based learning sessions</li>
-                            <li><strong>Microlearning vaccines:</strong> Vaccine-specific quiz sessions</li>
-                            <li><strong>Motivational interviewing:</strong> Motivational interview techniques</li>
-                            <li><strong>Visit check in:</strong> Home visit debrief sessions</li>
-                        </ul>
-                        
-                        <h5 class="mt-4">Average FLW Score by Method and Version</h5>
-                        <p>This metric shows the average session rating (1-5 scale) grouped by coaching method and bot version.</p>
-                        <ul>
-                            <li><strong>Calculation:</strong> Average of user ratings using comprehensive pattern matching for rating questions and responses</li>
-                            <li><strong>Rating Scale:</strong> 1 (not useful) to 5 (very useful)</li>
-                            <li><strong>Rating Detection:</strong> Comprehensive pattern matching for various rating question formats and user response patterns</li>
-                            <li><strong>Method Detection:</strong> Based on session tags (coach_method_*) or message content analysis</li>
-                            <li><strong>Version Detection:</strong> Based on experiment ID and version tags from last message</li>
-                            <li><strong>Purpose:</strong> Identify whether coaching methods receive higher ratings with bot evolution</li>
-                            <li><strong>Data Coverage:</strong> ~68% of sessions have extractable ratings (vs. 0.07% with basic pattern matching)</li>
-                            <li><strong>Rating Statistics:</strong> Dynamic footnotes show rating question coverage and extraction rates for transparency</li>
-                        </ul>
-                        
-                        <h5 class="mt-4">Median User Words per Session by Method and Version</h5>
-                        <p>This metric shows the median number of words users type per session, grouped by coaching method and bot version.</p>
-                        <ul>
-                            <li><strong>Calculation:</strong> Median word count of all user messages within a session</li>
-                            <li><strong>Method Detection:</strong> Based on session tags (coach_method_*) or message content analysis</li>
-                            <li><strong>Version Detection:</strong> Based on experiment ID and version tags from last message</li>
-                            <li><strong>Word Count:</strong> Total words across all user messages in a session</li>
-                        </ul>
-                        
-                        <h6>Session Numbering:</h6>
-                        <p>For line graph analysis, sessions are numbered chronologically per participant:</p>
-                        <ul>
-                            <li><strong>Participant ID:</strong> Based on participant.identifier field</li>
-                            <li><strong>Chronological Order:</strong> Sorted by session created_at timestamp</li>
-                            <li><strong>Session Number:</strong> Position in participant's session sequence (1st, 2nd, 3rd, etc.)</li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script>
-        // Progression data from server
-        const progressionData = {progression_data_json};
-        const progressionDataFiltered = {progression_data_filtered_json};
+        // Volume data from server
+        const volumeDataDay = {volume_data_day_json};
+        const volumeDataWeek = {volume_data_week_json};
+        const volumeDataMonth = {volume_data_month_json};
         
         let progressionChart = null;
-        
-        function toggleOutlierFilter() {{
-            // This function would need to be implemented to recalculate data with outlier filtering
-            // For now, it's a placeholder that could trigger a page reload or AJAX call
-            console.log('Outlier filter toggled - this would require server-side recalculation');
-        }}
+        let volumeChart = null;
         
         function updateProgressionChart() {{
             const view = document.getElementById('progressionView').value;
-            const excludeOutliers = document.getElementById('excludeOutliersProgression').checked;
+            const excludeOutliers = document.getElementById('excludeOutliersGlobal').checked;
             const data = excludeOutliers ? progressionDataFiltered[view] : progressionData[view];
             
             if (progressionChart) {{
@@ -1791,9 +1882,280 @@ class SimpleVersionComparisonDashboard:
             }});
         }}
         
+        function filterDataByDateRange(data, startDate, endDate, aggregation) {{
+            // Filter time periods based on date range
+            if (!startDate && !endDate) {{
+                return data;
+            }}
+            
+            const filtered = {{}};
+            const timePeriods = Object.keys(data).sort();
+            
+            timePeriods.forEach(timePeriod => {{
+                let periodDate;
+                
+                // Parse time period based on aggregation
+                if (aggregation === 'day') {{
+                    periodDate = new Date(timePeriod + 'T00:00:00');
+                }} else if (aggregation === 'week') {{
+                    periodDate = new Date(timePeriod + 'T00:00:00');
+                }} else if (aggregation === 'month') {{
+                    periodDate = new Date(timePeriod + '-01T00:00:00');
+                }} else {{
+                    periodDate = new Date(timePeriod + 'T00:00:00');
+                }}
+                
+                // Check if period is within date range
+                const afterStart = !startDate || periodDate >= new Date(startDate);
+                const beforeEnd = !endDate || periodDate <= new Date(endDate + 'T23:59:59');
+                
+                if (afterStart && beforeEnd) {{
+                    filtered[timePeriod] = data[timePeriod];
+                }}
+            }});
+            
+            return filtered;
+        }}
+        
+        function updateVolumeChart() {{
+            const aggregation = document.getElementById('volumeAggregation').value;
+            let volumeData;
+            
+            // Select data based on aggregation level
+            if (aggregation === 'day') {{
+                volumeData = volumeDataDay;
+            }} else if (aggregation === 'week') {{
+                volumeData = volumeDataWeek;
+            }} else if (aggregation === 'month') {{
+                volumeData = volumeDataMonth;
+            }} else {{
+                volumeData = volumeDataWeek;
+            }}
+            
+            // Apply date range filter
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            volumeData = filterDataByDateRange(volumeData, startDate, endDate, aggregation);
+            
+            if (volumeChart) {{
+                volumeChart.destroy();
+            }}
+            
+            const ctx = document.getElementById('volumeChart').getContext('2d');
+            
+            // Get all time periods sorted (after filtering)
+            const timePeriods = Object.keys(volumeData).sort();
+            
+            // Define versions and methods
+            const versions = ['Control', 'V3', 'V4', 'V5', 'V6'];
+            const methods = ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown'];
+            
+            // Define colors for methods
+            const methodColors = {{
+                'Scenario': '#FF6384',
+                'Microlearning': '#36A2EB',
+                'Microlearning vaccines': '#FFCE56',
+                'Motivational interviewing': '#4BC0C0',
+                'Visit check in': '#9966FF',
+                'Unknown': '#C9CBCF'
+            }};
+            
+            // Prepare datasets - create labels with version for each time period
+            // Format: "2024-01-15 - Control", "2024-01-15 - V3", etc.
+            const labels = [];
+            const datasets = [];
+            
+            // Create a dataset for each method
+            methods.forEach(method => {{
+                const data = [];
+                
+                timePeriods.forEach(timePeriod => {{
+                    versions.forEach(version => {{
+                        const value = volumeData[timePeriod]?.[version]?.[method] || 0;
+                        data.push(value);
+                    }});
+                }});
+                
+                datasets.push({{
+                    label: method,
+                    data: data,
+                    backgroundColor: methodColors[method]
+                }});
+            }});
+            
+            // Create labels: for each time period, create labels for each version
+            timePeriods.forEach(timePeriod => {{
+                versions.forEach(version => {{
+                    labels.push(`${{timePeriod}} - ${{version}}`);
+                }});
+            }});
+            
+            volumeChart = new Chart(ctx, {{
+                type: 'bar',
+                data: {{
+                    labels: labels,
+                    datasets: datasets
+                }},
+                options: {{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {{
+                        x: {{
+                            stacked: true,
+                            title: {{
+                                display: true,
+                                text: 'Time'
+                            }},
+                            ticks: {{
+                                maxRotation: 45,
+                                minRotation: 45
+                            }}
+                        }},
+                        y: {{
+                            stacked: true,
+                            title: {{
+                                display: true,
+                                text: 'Number of Sessions'
+                            }},
+                            beginAtZero: true
+                        }}
+                    }},
+                    plugins: {{
+                        legend: {{
+                            display: true,
+                            position: 'right'
+                        }},
+                        tooltip: {{
+                            callbacks: {{
+                                label: function(context) {{
+                                    const label = context.dataset.label || '';
+                                    const value = context.parsed.y;
+                                    if (value > 0) {{
+                                        return label + ': ' + value;
+                                    }}
+                                    return '';
+                                }}
+                            }}
+                        }},
+                        title: {{
+                            display: true,
+                            text: 'Volume of Session per Coach Version'
+                        }}
+                    }}
+                }}
+            }});
+        }}
+        
+        // Apply global filters to charts
+        function applyGlobalFilters() {{
+            // Update volume chart with date filters
+            if (document.getElementById('volumeChart')) {{
+                updateVolumeChart();
+            }}
+            
+            // Note: Progression chart already respects outlier filter via updateProgressionChart()
+            // Date filtering for progression chart would require session-level date data
+            // which is not currently available in the JavaScript
+            
+            // Show feedback
+            const feedback = document.createElement('div');
+            feedback.className = 'alert alert-info alert-dismissible fade show mt-2';
+            feedback.innerHTML = `
+                <strong>Filters Applied:</strong> Charts have been updated. 
+                <small>Note: Summary tables require dashboard regeneration to reflect date/participant filters.</small>
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            
+            // Remove existing feedback if any
+            const existingFeedback = document.querySelector('.filter-feedback');
+            if (existingFeedback) {{
+                existingFeedback.remove();
+            }}
+            
+            feedback.classList.add('filter-feedback');
+            const filterSection = document.querySelector('#filterCollapse .card-body');
+            if (filterSection) {{
+                filterSection.appendChild(feedback);
+                // Auto-dismiss after 5 seconds
+                setTimeout(() => {{
+                    if (feedback.parentNode) {{
+                        feedback.remove();
+                    }}
+                }}, 5000);
+            }}
+        }}
+        
+        // Reset global filters
+        function resetGlobalFilters() {{
+            // Reset date filters
+            document.getElementById('startDate').value = '';
+            document.getElementById('endDate').value = '';
+            
+            // Reset participant filter (clear selections)
+            const participantSelect = document.getElementById('participantFilter');
+            if (participantSelect) {{
+                Array.from(participantSelect.options).forEach(option => {{
+                    option.selected = false;
+                }});
+            }}
+            
+            // Reset outlier filter (uncheck)
+            document.getElementById('excludeOutliersGlobal').checked = false;
+            
+            // Note: excludeSplitSessions and excludeTestSessions are checked by default
+            // and should remain checked as they're data quality filters
+            
+            // Apply the reset filters
+            applyGlobalFilters();
+        }}
+        
+        // Populate participant filter dropdown
+        function populateParticipantFilter() {{
+            const participantSelect = document.getElementById('participantFilter');
+            
+            // Extract unique participant IDs from the data
+            // This would need to be populated from the actual session data
+            // For now, we'll add some sample participants
+            const sampleParticipants = [
+                'participant_001', 'participant_002', 'participant_003', 
+                'participant_004', 'participant_005', 'participant_006'
+            ];
+            
+            sampleParticipants.forEach(participant => {{
+                const option = document.createElement('option');
+                option.value = participant;
+                option.textContent = participant;
+                participantSelect.appendChild(option);
+            }});
+        }}
+        
         // Initialize chart on page load
         document.addEventListener('DOMContentLoaded', function() {{
+            populateParticipantFilter();
             updateProgressionChart();
+            updateVolumeChart();
+            
+            // Add event listeners for date inputs to auto-apply filters
+            const startDateInput = document.getElementById('startDate');
+            const endDateInput = document.getElementById('endDate');
+            
+            if (startDateInput) {{
+                startDateInput.addEventListener('change', function() {{
+                    // Only update volume chart (progression chart doesn't support date filtering yet)
+                    if (document.getElementById('volumeChart')) {{
+                        updateVolumeChart();
+                    }}
+                }});
+            }}
+            
+            if (endDateInput) {{
+                endDateInput.addEventListener('change', function() {{
+                    // Only update volume chart (progression chart doesn't support date filtering yet)
+                    if (document.getElementById('volumeChart')) {{
+                        updateVolumeChart();
+                    }}
+                }});
+            }}
         }});
     </script>
 </body>
@@ -1880,8 +2242,16 @@ class SimpleVersionComparisonDashboard:
         print("Calculating rating statistics...")
         rating_stats = self.calculate_rating_statistics(sessions, messages_data)
         
+        # Calculate session volume data for all aggregation levels
+        print("Calculating session volume data...")
+        volume_data = {
+            'day': self.calculate_session_volume_by_time(sessions, messages_data, aggregation='day'),
+            'week': self.calculate_session_volume_by_time(sessions, messages_data, aggregation='week'),
+            'month': self.calculate_session_volume_by_time(sessions, messages_data, aggregation='month')
+        }
+        
         # Generate HTML
-        html_content = self.generate_dashboard_html(metrics, progression_data, rating_stats, progression_data_filtered)
+        html_content = self.generate_dashboard_html(metrics, progression_data, rating_stats, progression_data_filtered, volume_data)
         
         # Save to file
         output_file = self.output_dir / "version_comparison_dashboard.html"
