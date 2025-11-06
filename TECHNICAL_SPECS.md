@@ -34,7 +34,7 @@ Raw Data Files → Comprehensive Filtering → Processing → Metrics → HTML G
 
 The system now includes comprehensive filtering and enhanced detection:
 
-- **Split Session Detection**: Identifies sessions with no participant messages
+- **Split Session Detection**: Identifies sessions with less than 3 participant messages (improved definition)
 - **Test Session Detection**: Filters out sessions with @dimagi.com participant IDs
 - **Outlier Session Detection**: Identifies extreme sessions (>50 messages or >1000 words)
 - **Enhanced Rating Detection**: Comprehensive pattern matching for 68% rating extraction
@@ -213,11 +213,12 @@ def is_outlier_session(session_messages, user_message_count, user_words):
             user_words > word_threshold)
 
 def is_split_session(session, messages):
-    # Check if session has no participant messages
+    # Check if session has less than 3 participant messages
+    user_message_count = 0
     for message in messages:
         if message.get('role') == 'user':
-            return False  # Has user messages, not split
-    return True  # No user messages found, this is split
+            user_message_count += 1
+    return user_message_count < 3  # Split session if less than 3 user messages
 
 def is_test_session(session):
     # Check if participant ID ends with @dimagi.com
@@ -343,8 +344,48 @@ def load_sessions_generator(sessions_dir):
 
 ### JavaScript Requirements
 - **Bootstrap JS**: For interactive components
-- **No Custom JS**: Pure HTML/CSS implementation
+- **Chart.js**: For interactive charts (line graphs and stacked bar charts)
+- **Custom JavaScript**: 
+  - Dynamic table updates based on outlier filter
+  - Date range filtering for Session Volume chart
+  - Client-side data filtering and aggregation
 - **CDN Delivery**: External resources for portability
+
+## 📊 Table Features
+
+### Aggregated Views
+
+All method-based tables now include:
+
+- **"All Versions" Column**: Shows aggregated values across all versions for each method
+  - For percentages: Weighted average
+  - For counts: Sum
+  - For medians: Median of medians
+  - For averages: Average of averages
+
+- **"Total (All Methods)" Row**: Shows aggregated values across all methods for each version
+  - Same aggregation methods as "All Versions" column
+
+- **"Total (All Versions)" Row** (Summary Metrics table only): Shows aggregated totals across all versions
+  - Sessions: Sum
+  - Annotated Sessions: Sum
+  - Refrigeration Examples: Weighted average
+  - Median Words: Median of medians
+  - Average Rating: Average of averages
+
+### Dynamic Table Updates
+
+- **Median Words Table**: Updates dynamically based on "Exclude outlier sessions" checkbox
+- **Median Messages Table**: Updates dynamically based on "Exclude outlier sessions" checkbox
+- Uses client-side JavaScript to recalculate and re-render table rows
+
+### Session Volume Chart
+
+- **Chart Type**: Stacked bar chart (Chart.js)
+- **Data Aggregation**: Pre-calculated for day, week, and month levels
+- **Client-Side Filtering**: Date range filtering applied via JavaScript
+- **Method Stacking**: Each coaching method stacked on top of others for each version
+- **Version Comparison**: Versions displayed side by side for each time period
 
 ## 📈 Performance Metrics
 

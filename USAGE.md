@@ -36,38 +36,47 @@ open version_comparison/version_comparison_dashboard.html
 
 The dashboard applies comprehensive filtering to ensure accurate analysis:
 
-- **Split Sessions Excluded**: Sessions with no participant messages (bot-only interactions)
+- **Split Sessions Excluded**: Sessions with less than 3 participant messages (improved definition for better data quality)
 - **Test Sessions Excluded**: Sessions with participant IDs ending in @dimagi.com (internal testing)
 - **Consistent Filtering**: All tables, graphs, and metrics use the same exclusion criteria
 - **Enhanced Rating Detection**: Comprehensive pattern matching improves rating extraction from 0.07% to 68% of sessions
+- **Date Range Filtering**: Interactive date range filtering for Session Volume chart (client-side filtering)
 
 ### Dashboard Layout
 
-The dashboard consists of five main sections:
+The dashboard consists of six main sections:
 
 1. **Header Section**
    - Dashboard title and navigation
    - Generation timestamp
    - Overview information
+   - Global filters (date range, participant IDs, outlier exclusion, split/test session exclusion)
 
 2. **Summary Metrics Table**
    - Core comparison metrics for each version
+   - "Total (All Versions)" row showing aggregated totals across all versions
    - Sortable and responsive table
    - Color-coded headers
 
 3. **Method-Based Analysis Tables**
-   - Refrigerator example rate by method and version
-   - Median number of participant messages per session by method and version
-   - Median user words per session by method and version (with outlier filtering)
-   - Average FLW score by method and version (with dynamic rating statistics)
+   - Refrigerator example rate by method and version (with "All Versions" column and "Total (All Methods)" row)
+   - Median number of participant messages per session by method and version (with "All Versions" column and "Total (All Methods)" row, dynamic outlier filtering)
+   - Median user words per session by method and version (with "All Versions" column and "Total (All Methods)" row, dynamic outlier filtering)
+   - Average FLW score by method and version (with "All Versions" column and "Total (All Methods)" row, dynamic rating statistics)
 
-4. **Session Progression Analysis**
+4. **Session Volume Analysis**
+   - Stacked bar chart showing session volume over time by coaching method and version
+   - Aggregation options: day, week, month (default: week)
+   - Date range filtering for interactive time-based analysis
+   - Session count summary table by method and version (with "All Versions" column and "Total (All Methods)" row)
+
+5. **Session Progression Analysis**
    - Interactive line graph with Chart.js
    - Dropdown to switch between view options
    - Outlier filtering checkbox for extreme sessions
    - Shows user verbosity progression across sessions
 
-5. **Definitions Section**
+6. **Definitions Section**
    - Version definitions and criteria
    - Metric explanations
    - Technical details
@@ -105,24 +114,47 @@ The dashboard consists of five main sections:
 - **Calculation**: (Refrigerator sessions / Annotated sessions) × 100 for each method-version combination
 - **Method Detection**: Based on session tags (`coach_method_*`) or message content analysis
 - **Interpretation**: Higher percentages indicate more specific coaching scenarios for that method and version
+- **Aggregated Views**: 
+  - "All Versions" column shows the average rate across all versions for each method
+  - "Total (All Methods)" row shows the average rate across all methods for each version
 
 #### Median Number of Participant Messages per Session by Method and Version
 - **What it measures**: Median number of participant messages per session, grouped by coaching method and bot version
 - **Calculation**: Median of total user message count across all sessions for each method-version combination
 - **Interpretation**: Higher numbers indicate more interactive sessions for that method and version
+- **Dynamic Filtering**: Table updates in real-time based on "Exclude outlier sessions" checkbox
+- **Aggregated Views**: 
+  - "All Versions" column shows the median across all versions for each method
+  - "Total (All Methods)" row shows the median across all methods for each version
 
 #### Median User Words per Session by Method and Version
 - **What it measures**: Median word count of user messages per session, grouped by coaching method and bot version
 - **Calculation**: Median of total user words across all sessions for each method-version combination
-- **Outlier Filtering**: Optional checkbox to exclude sessions with >50 messages or >1000 words
+- **Outlier Filtering**: Optional checkbox to exclude sessions with >50 messages or >1000 words (updates table dynamically)
 - **Session Numbering**: Chronological order per participant for line graph analysis
 - **Interpretation**: Higher numbers indicate more detailed user interactions for that method and version
+- **Aggregated Views**: 
+  - "All Versions" column shows the median across all versions for each method
+  - "Total (All Methods)" row shows the median across all methods for each version
 
 #### Average FLW Score by Method and Version
 - **What it measures**: Average session ratings (1-5 scale) grouped by coaching method and bot version
 - **Calculation**: Average of user ratings for sessions ending with rating questions
 - **Rating Scale**: 1 (not useful) to 5 (very useful)
 - **Interpretation**: Higher ratings indicate better user satisfaction for that method and version
+- **Aggregated Views**: 
+  - "All Versions" column shows the average rating across all versions for each method
+  - "Total (All Methods)" row shows the average rating across all methods for each version
+
+#### Session Volume Analysis
+- **What it measures**: Number of sessions over time, grouped by coaching method and bot version
+- **Chart Type**: Stacked bar chart with methods stacked on top of each other
+- **X-axis**: Time periods (day, week, or month based on aggregation level)
+- **Y-axis**: Number of sessions
+- **Aggregation Options**: Day, week (default), or month
+- **Date Range Filtering**: Interactive date range filter for client-side filtering
+- **Interpretation**: Shows session volume trends over time and distribution across methods and versions
+- **Summary Table**: Session count by method and version with "All Versions" column and "Total (All Methods)" row
 
 #### Session Progression Analysis
 - **What it measures**: How user verbosity changes across successive sessions

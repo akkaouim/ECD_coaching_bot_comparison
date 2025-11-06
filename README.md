@@ -4,18 +4,25 @@ A web-based dashboard for comparing different bot categories in the OpenChatStud
 
 ## Features
 
-- **Summary Metrics**: Overview of sessions, annotations, and ratings by bot version
-- **Performance Analysis**: Refrigerator example rates and FLW scores by method and version
+- **Summary Metrics**: Overview of sessions, annotations, and ratings by bot version with "Total (All Versions)" aggregation row
+- **Performance Analysis**: Refrigerator example rates and FLW scores by method and version with "All Versions" columns and "Total (All Methods)" rows
+- **Session Volume Analysis**: 
+  - Stacked bar chart showing session volume over time by coaching method and version
+  - Aggregation options: day, week, month (default: week)
+  - Date range filtering for interactive analysis
+  - Summary table with session counts by method and version
 - **User Engagement**: 
   - Median user words per session with progression analysis
   - Median participant messages per session by method and version
   - Outlier filtering for extreme sessions (>50 messages or >1000 words)
+  - Dynamic table updates based on outlier filter
 - **Interactive Charts**: Line graphs showing session progression over time with outlier filtering
 - **Method Detection**: Automatic detection of coaching methods (Scenario, Microlearning, etc.)
 - **Enhanced Rating Detection**: Comprehensive pattern matching for 68% rating extraction (vs. 0.07% basic)
-- **Data Quality Filtering**: Excludes split sessions and test sessions for accurate analysis
+- **Data Quality Filtering**: Excludes split sessions (less than 3 participant messages) and test sessions for accurate analysis
 - **Dynamic Statistics**: Real-time rating coverage metrics displayed as footnotes
 - **Outlier Detection**: Advanced filtering to exclude training sessions and extreme user interactions
+- **Aggregated Views**: "All Versions" columns and "Total" rows across all method-based tables for comprehensive cross-version and cross-method analysis
 
 ## Quick Start
 
@@ -56,9 +63,15 @@ The dashboard expects data files in the following structure:
 - Average FLW score by method and version
 
 ### User Engagement Tab
-- Median number of participant messages per session by method and version
-- Median user words per session by method and version (with outlier filtering)
+- Median number of participant messages per session by method and version (with "All Versions" column and "Total (All Methods)" row)
+- Median user words per session by method and version (with outlier filtering, "All Versions" column, and "Total (All Methods)" row)
 - Session progression analysis with interactive line graphs and outlier filtering
+
+### Session Volume Tab
+- Stacked bar chart showing volume of sessions per coach version over time
+- Aggregation options: day, week, month (default: week)
+- Date range filtering for interactive time-based analysis
+- Session count summary table by method and version (with "All Versions" column and "Total (All Methods)" row)
 
 ### Definitions Tab
 - Version definitions and experiment ID mappings
@@ -69,11 +82,12 @@ The dashboard expects data files in the following structure:
 
 The dashboard applies comprehensive filtering to ensure data quality:
 
-- **Split Sessions Excluded**: Sessions with no participant messages (bot-only interactions)
+- **Split Sessions Excluded**: Sessions with less than 3 participant messages (improved definition for better data quality)
 - **Test Sessions Excluded**: Sessions with participant IDs ending in @dimagi.com (internal testing)
 - **Outlier Sessions Filtered**: Optional filtering of extreme sessions (>50 messages or >1000 words)
 - **Consistent Filtering**: All tables, graphs, and metrics use the same exclusion criteria
 - **Enhanced Rating Detection**: Comprehensive pattern matching improves rating extraction from 0.07% to 68% of sessions
+- **Date Range Filtering**: Interactive date range filtering for Session Volume chart (client-side filtering)
 
 ### Outlier Detection
 
