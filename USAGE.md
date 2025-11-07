@@ -55,6 +55,7 @@ The dashboard consists of six main sections:
 2. **Summary Metrics Table**
    - Core comparison metrics for each version
    - "Total (All Versions)" row showing aggregated totals across all versions
+   - Summary Metrics - All Versions vs Refrigerator Examples table (exclusive to Summary tab)
    - Sortable and responsive table
    - Color-coded headers
 

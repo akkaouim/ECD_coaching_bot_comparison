@@ -57,6 +57,7 @@ The dashboard expects data files in the following structure:
 
 ### Summary Tab
 - Summary metrics by version (sessions, annotations, ratings)
+- Summary Metrics - All Versions vs Refrigerator Examples table (aggregated comparison)
 
 ### Performance Tab  
 - Refrigerator example rate by method and version

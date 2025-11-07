@@ -556,10 +556,12 @@ class SimpleVersionComparisonDashboard:
         
         return user_message_count > message_threshold or user_words > word_threshold
 
-    def calculate_session_progression_data(self, sessions: List[Dict], messages: List[Dict], exclude_outliers: bool = False) -> Dict:
+    def calculate_session_progression_data(self, sessions: List[Dict], messages: List[Dict], exclude_outliers: bool = False, return_session_data: bool = False) -> Dict:
         """Calculate session progression data for line graph"""
         # Group sessions by participant, excluding split and test sessions
         participant_sessions = {}
+        session_level_data = []  # Store session-level data for filtering
+        
         for session in sessions:
             session_id = session.get('id')
             session_messages = messages.get(session_id, [])
@@ -660,6 +662,17 @@ class SimpleVersionComparisonDashboard:
                 if session_number not in progression_data['by_version'][version]:
                     progression_data['by_version'][version][session_number] = []
                 progression_data['by_version'][version][session_number].append(user_words)
+                
+                # Store session-level data for filtering
+                if return_session_data:
+                    session_level_data.append({
+                        'session_id': session_id,
+                        'participant_id': participant_id,
+                        'session_number': session_number,
+                        'user_words': user_words,
+                        'method': detected_method,
+                        'version': version
+                    })
         
         # Calculate averages for each session number
         for option in progression_data:
@@ -671,6 +684,8 @@ class SimpleVersionComparisonDashboard:
                     else:
                         progression_data[option][key][session_num] = 0
         
+        if return_session_data:
+            return progression_data, session_level_data
         return progression_data
 
     def calculate_average_rating_by_method_and_version(self, sessions: List[Dict], messages_data: Dict) -> Dict:
@@ -737,8 +752,8 @@ class SimpleVersionComparisonDashboard:
                     average_ratings[method][version] = 0.0
         
         return average_ratings
-    
-    def calculate_session_volume_by_time(self, sessions: List[Dict], messages_data: Dict, aggregation: str = 'week') -> Dict:
+
+    def calculate_session_volume_by_time(self, sessions: List[Dict], messages_data: Dict, aggregation: str = 'week', refrigerator_only: bool = False, return_session_mapping: bool = False) -> Dict:
         """
         Calculate session volume grouped by time period, version, and coaching method.
         
@@ -755,6 +770,7 @@ class SimpleVersionComparisonDashboard:
         
         # Initialize data structure
         volume_data = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
+        session_mapping = {}  # {time_key: {version: {method: [session_ids]}}}
         
         # Process each session
         for session in sessions:
@@ -763,6 +779,10 @@ class SimpleVersionComparisonDashboard:
             
             # Skip split sessions and test sessions
             if self.should_exclude_session(session, session_messages):
+                continue
+            
+            # Skip non-refrigerator sessions if filter is enabled
+            if refrigerator_only and not self.has_refrigerator_example_tag(session, session_messages):
                 continue
             
             # Get session created_at date
@@ -816,6 +836,16 @@ class SimpleVersionComparisonDashboard:
             
             # Increment count
             volume_data[time_key][version][detected_method] += 1
+            
+            # Track which session contributes to this count (for filtering)
+            if return_session_mapping:
+                if time_key not in session_mapping:
+                    session_mapping[time_key] = {}
+                if version not in session_mapping[time_key]:
+                    session_mapping[time_key][version] = {}
+                if detected_method not in session_mapping[time_key][version]:
+                    session_mapping[time_key][version][detected_method] = []
+                session_mapping[time_key][version][detected_method].append(session_id)
         
         # Convert to regular dict for JSON serialization
         result = {}
@@ -826,6 +856,16 @@ class SimpleVersionComparisonDashboard:
                 for method in ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown']:
                     result[time_key][version][method] = volume_data[time_key][version][method]
         
+        if return_session_mapping:
+            # Convert session_mapping defaultdict to regular dict for JSON serialization
+            session_mapping_dict = {}
+            for time_key in sorted(session_mapping.keys()):
+                session_mapping_dict[time_key] = {}
+                for version in session_mapping[time_key]:
+                    session_mapping_dict[time_key][version] = {}
+                    for method in session_mapping[time_key][version]:
+                        session_mapping_dict[time_key][version][method] = list(session_mapping[time_key][version][method])
+            return result, session_mapping_dict
         return result
     
     def calculate_volume_summary(self, volume_data: Dict) -> Dict:
@@ -934,7 +974,7 @@ class SimpleVersionComparisonDashboard:
         rows += total_row
         
         return rows
-    
+
     def generate_median_words_table_rows(self, metrics: List[Dict]) -> str:
         """Generate table rows for median words by method and version"""
         # Get all unique methods across all versions
@@ -1469,7 +1509,7 @@ class SimpleVersionComparisonDashboard:
         
         return statistics.mean(ratings)
     
-    def calculate_metrics_for_version(self, version_name: str, sessions: List[Dict], messages_data: Dict) -> Dict:
+    def calculate_metrics_for_version(self, version_name: str, sessions: List[Dict], messages_data: Dict, refrigerator_only: bool = False) -> Dict:
         """Calculate metrics for a specific version"""
         # Filter out split sessions and test sessions
         valid_sessions = []
@@ -1477,6 +1517,9 @@ class SimpleVersionComparisonDashboard:
             session_id = session.get('id')
             messages = messages_data.get(session_id, [])
             if not self.should_exclude_session(session, messages):
+                # Apply refrigerator filter if enabled
+                if refrigerator_only and not self.has_refrigerator_example_tag(session, messages):
+                    continue
                 valid_sessions.append(session)
         
         # Count annotated sessions
@@ -1523,7 +1566,7 @@ class SimpleVersionComparisonDashboard:
             'average_rating_by_method': average_rating_by_method
         }
     
-    def generate_dashboard_html(self, metrics: List[Dict], progression_data: Dict = None, rating_stats: Dict = None, progression_data_filtered: Dict = None, volume_data: Dict = None) -> str:
+    def generate_dashboard_html(self, metrics: List[Dict], progression_data: Dict = None, rating_stats: Dict = None, progression_data_filtered: Dict = None, volume_data: Dict = None, volume_data_refrigerator: Dict = None, session_participant_map: Dict = None, volume_session_maps: Dict = None, progression_session_data: List[Dict] = None, progression_session_data_filtered: List[Dict] = None) -> str:
         """Generate complete dashboard HTML"""
         # Generate summary table
         table_rows = ""
@@ -1573,14 +1616,18 @@ class SimpleVersionComparisonDashboard:
                             </tr>
             """
         
-        # Generate refrigerator rate by method table
+        # Generate refrigerator rate by method table (both versions)
         method_table_rows = self.generate_method_table_rows(metrics)
+        # Generate filtered version
+        metrics_refrigerator = [m.get('refrigerator_filtered', m) for m in metrics]
+        method_table_rows_refrigerator = self.generate_method_table_rows(metrics_refrigerator)
         
         # Generate median words by method table
         median_words_table_rows = self.generate_median_words_table_rows(metrics)
         
-        # Generate rating by method table
+        # Generate rating by method table (both versions)
         rating_table_rows = self.generate_rating_table_rows(metrics)
+        rating_table_rows_refrigerator = self.generate_rating_table_rows(metrics_refrigerator)
         
         # Convert progression data to JSON for JavaScript
         progression_data_json = json.dumps(progression_data) if progression_data else "{}"
@@ -1591,12 +1638,97 @@ class SimpleVersionComparisonDashboard:
         volume_data_week_json = json.dumps(volume_data.get('week', {})) if volume_data else "{}"
         volume_data_month_json = json.dumps(volume_data.get('month', {})) if volume_data else "{}"
         
-        # Calculate total session counts by method and version for the summary table
+        # Convert refrigerator-filtered volume data to JSON for JavaScript
+        volume_data_refrigerator_day_json = json.dumps(volume_data_refrigerator.get('day', {})) if volume_data_refrigerator else "{}"
+        volume_data_refrigerator_week_json = json.dumps(volume_data_refrigerator.get('week', {})) if volume_data_refrigerator else "{}"
+        volume_data_refrigerator_month_json = json.dumps(volume_data_refrigerator.get('month', {})) if volume_data_refrigerator else "{}"
+        
+        # Calculate total session counts by method and version for the summary table (both versions)
         volume_summary = self.calculate_volume_summary(volume_data.get('week', {}) if volume_data else {})
         volume_summary_table_rows = self.generate_volume_summary_table_rows(volume_summary, metrics)
+        volume_summary_refrigerator = self.calculate_volume_summary(volume_data_refrigerator.get('week', {}) if volume_data_refrigerator else {})
+        volume_summary_table_rows_refrigerator = self.generate_volume_summary_table_rows(volume_summary_refrigerator, metrics_refrigerator)
+        
+        # Generate summary table rows for refrigerator-filtered version
+        table_rows_refrigerator = ""
+        total_sessions_r = 0
+        total_annotated_r = 0
+        total_refrigerator_count_r = 0
+        median_words_list_r = []
+        ratings_list_r = []
+        
+        for metric in metrics_refrigerator:
+            table_rows_refrigerator += f"""
+                            <tr>
+                                <td><strong>{metric['version_name']}</strong></td>
+                                <td>{metric['total_sessions']}</td>
+                                <td>{metric['annotated_sessions']}</td>
+                                <td>{metric['refrigerator_examples_percent']:.1f}%</td>
+                                <td>{metric['median_human_words_per_session']:.1f}</td>
+                                <td>{metric['average_session_rating']:.2f}</td>
+                            </tr>
+            """
+            # Collect values for total row
+            total_sessions_r += metric['total_sessions']
+            total_annotated_r += metric['annotated_sessions']
+            # Calculate refrigerator count from percentage
+            if metric['annotated_sessions'] > 0:
+                refrigerator_count = int(metric['annotated_sessions'] * metric['refrigerator_examples_percent'] / 100)
+                total_refrigerator_count_r += refrigerator_count
+            if metric['median_human_words_per_session'] > 0:
+                median_words_list_r.append(metric['median_human_words_per_session'])
+            if metric['average_session_rating'] > 0:
+                ratings_list_r.append(metric['average_session_rating'])
+        
+        # Calculate totals for total row
+        total_refrigerator_percent_r = (total_refrigerator_count_r / total_annotated_r * 100) if total_annotated_r > 0 else 0.0
+        total_median_words_r = statistics.median(median_words_list_r) if median_words_list_r else 0.0
+        total_avg_rating_r = statistics.mean(ratings_list_r) if ratings_list_r else 0.0
+        
+        # Add Total row
+        table_rows_refrigerator += f"""
+                            <tr style="background-color: #f8f9fa;">
+                                <td><strong>Total (All Versions)</strong></td>
+                                <td style="font-weight: bold;">{total_sessions_r}</td>
+                                <td style="font-weight: bold;">{total_annotated_r}</td>
+                                <td style="font-weight: bold;">{total_refrigerator_percent_r:.1f}%</td>
+                                <td style="font-weight: bold;">{total_median_words_r:.1f}</td>
+                                <td style="font-weight: bold;">{total_avg_rating_r:.2f}</td>
+                            </tr>
+            """
+        
+        # Generate aggregated summary table (All Versions vs Refrigerator Only)
+        aggregated_summary_rows = f"""
+                            <tr>
+                                <td><strong>All Versions</strong></td>
+                                <td>{total_sessions}</td>
+                                <td>{total_annotated}</td>
+                                <td>{total_refrigerator_percent:.1f}%</td>
+                                <td>{total_median_words:.1f}</td>
+                                <td>{total_avg_rating:.2f}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Refrigerator Example Sessions Only</strong></td>
+                                <td>{total_sessions_r}</td>
+                                <td>{total_annotated_r}</td>
+                                <td>{total_refrigerator_percent_r:.1f}%</td>
+                                <td>{total_median_words_r:.1f}</td>
+                                <td>{total_avg_rating_r:.2f}</td>
+                            </tr>
+            """
         
         # Convert metrics data to JSON for JavaScript (for dynamic table updates)
         metrics_json = json.dumps(metrics) if metrics else "[]"
+        
+        # Convert session-participant mapping to JSON for JavaScript
+        session_participant_map_json = json.dumps(session_participant_map) if session_participant_map else "{}"
+        
+        # Convert volume session maps to JSON for JavaScript
+        volume_session_maps_json = json.dumps(volume_session_maps) if volume_session_maps else "{}"
+        
+        # Convert progression session data to JSON for JavaScript
+        progression_session_data_json = json.dumps(progression_session_data) if progression_session_data else "[]"
+        progression_session_data_filtered_json = json.dumps(progression_session_data_filtered) if progression_session_data_filtered else "[]"
         
         html_content = f"""
 <!DOCTYPE html>
@@ -1691,11 +1823,11 @@ class SimpleVersionComparisonDashboard:
                             <!-- Participant ID Filter -->
                             <div class="col-md-4">
                                 <label for="participantFilter" class="form-label">Participant IDs:</label>
-                                <select class="form-select" id="participantFilter" multiple size="4">
-                                    <option value="">All Participants</option>
-                                    <!-- Participant options will be populated dynamically -->
-                                </select>
-                                <small class="form-text text-muted">Hold Ctrl/Cmd to select multiple participants</small>
+                                <textarea class="form-control" id="participantFilter" rows="4" placeholder="Enter participant IDs, one per line"></textarea>
+                                <small class="form-text text-muted">Enter one participant ID per line. Leave empty to show all participants.</small>
+                                <button class="btn btn-sm btn-primary mt-2" type="button" onclick="applyParticipantFilter()">
+                                    <i class="fas fa-filter me-1"></i>Apply Participant Filter
+                                </button>
                             </div>
                             
                             <!-- Outlier Filter -->
@@ -1719,6 +1851,12 @@ class SimpleVersionComparisonDashboard:
                                         Exclude test sessions (participant IDs ending with @dimagi.com)
                                     </label>
                                 </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="refrigeratorOnly" onchange="applyGlobalFilters()">
+                                    <label class="form-check-label" for="refrigeratorOnly">
+                                        Show only refrigerator example sessions
+                                    </label>
+                                </div>
                             </div>
                         </div>
                         
@@ -1732,7 +1870,7 @@ class SimpleVersionComparisonDashboard:
                                 </button>
                                 <small class="text-muted ms-3">
                                     <i class="fas fa-info-circle me-1"></i>
-                                    Note: Date filters work for the Session Volume chart. Summary tables require dashboard regeneration to reflect date/participant filters. Outlier filtering affects the progression line graph and median words/messages tables.
+                                    Note: Date and participant filters work for the Session Volume chart. Refrigerator filter applies to all graphs and tables. Participant filter for tables requires dashboard regeneration. Outlier filtering affects the progression line graph and median words/messages tables.
                                 </small>
                             </div>
                         </div>
@@ -1766,36 +1904,65 @@ class SimpleVersionComparisonDashboard:
                 <div class="tab-content" id="dashboardTabContent">
                     <!-- Summary Tab -->
                     <div class="tab-pane fade show active" id="summary" role="tabpanel" aria-labelledby="summary-tab">
-        <div class="row">
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header">
-                        <h3>Summary Metrics by Version</h3>
-                    </div>
-                    <div class="card-body">
-                        <div class="table-responsive">
-                            <table class="table table-striped table-hover">
-                                <thead class="table-dark">
-                                    <tr>
-                                        <th>Coaching Bot Version</th>
-                                        <th># Sessions</th>
-                                        <th># Annotated Sessions</th>
-                                        <th>Refrigeration Examples (%)</th>
-                                        <th>Median Human Words per Session</th>
-                                        <th>Average Session Rating</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {table_rows}
-                                </tbody>
-                            </table>
+                        <div class="row">
+                            <div class="col-12">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h3>Summary Metrics by Version</h3>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="table-responsive">
+                                            <table class="table table-striped table-hover">
+                                                <thead class="table-dark">
+                                                    <tr>
+                                                        <th>Coaching Bot Version</th>
+                                                        <th># Sessions</th>
+                                                        <th># Annotated Sessions</th>
+                                                        <th>Refrigeration Examples (%)</th>
+                                                        <th>Median Human Words per Session</th>
+                                                        <th>Average Session Rating</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="summaryMetricsTableBody">
+                                                    {table_rows}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
+                        
+                        <!-- Aggregated Summary Table -->
+                        <div class="row mt-4">
+                            <div class="col-12">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h3>Summary Metrics - All Versions vs Refrigerator Examples</h3>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="table-responsive">
+                                            <table class="table table-striped table-hover">
+                                                <thead class="table-dark">
+                                                    <tr>
+                                                        <th>Category</th>
+                                                        <th># Sessions</th>
+                                                        <th># Annotated Sessions</th>
+                                                        <th>Refrigeration Examples (%)</th>
+                                                        <th>Median Human Words per Session</th>
+                                                        <th>Average Session Rating</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {aggregated_summary_rows}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                </div>
-            </div>
-        </div>
-
                     <!-- Performance Tab -->
                     <div class="tab-pane fade" id="performance" role="tabpanel" aria-labelledby="performance-tab">
                         <div class="row mt-4">
@@ -1814,7 +1981,7 @@ class SimpleVersionComparisonDashboard:
                                                         <th>All Versions</th>
                                                     </tr>
                                                 </thead>
-                                                <tbody>
+                                                <tbody id="refrigeratorRateTableBody">
                                                     {method_table_rows}
                                                 </tbody>
                                             </table>
@@ -1840,7 +2007,7 @@ class SimpleVersionComparisonDashboard:
                                                         <th>All Versions</th>
                                                     </tr>
                                                 </thead>
-                                                <tbody>
+                                                <tbody id="averageRatingTableBody">
                                                     {rating_table_rows}
                                                 </tbody>
                                             </table>
@@ -1990,7 +2157,7 @@ class SimpleVersionComparisonDashboard:
                                                         <th>All Versions</th>
                                                     </tr>
                                                 </thead>
-                                                <tbody>
+                                                <tbody id="sessionCountTableBody">
                                                     {volume_summary_table_rows}
                                                 </tbody>
                                             </table>
@@ -2074,6 +2241,10 @@ class SimpleVersionComparisonDashboard:
                 </div>
             </div>
         </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -2088,16 +2259,118 @@ class SimpleVersionComparisonDashboard:
         const volumeDataWeek = {volume_data_week_json};
         const volumeDataMonth = {volume_data_month_json};
         
+        // Refrigerator-filtered volume data from server
+        const volumeDataRefrigeratorDay = {volume_data_refrigerator_day_json};
+        const volumeDataRefrigeratorWeek = {volume_data_refrigerator_week_json};
+        const volumeDataRefrigeratorMonth = {volume_data_refrigerator_month_json};
+        
         // Metrics data from server (for dynamic table updates)
         const metricsData = {metrics_json};
+        
+        // Session to participant mapping for filtering
+        const sessionParticipantMap = {session_participant_map_json};
+        
+        // Volume session mappings (which sessions contribute to each count)
+        const volumeSessionMaps = {volume_session_maps_json};
+        
+        // Progression session-level data for filtering
+        const progressionSessionData = {progression_session_data_json};
+        const progressionSessionDataFiltered = {progression_session_data_filtered_json};
+        
+        // Table rows for refrigerator filter toggle (as JSON strings for safe embedding)
+        const summaryTableRows = {json.dumps(table_rows)};
+        const summaryTableRowsRefrigerator = {json.dumps(table_rows_refrigerator)};
+        const refrigeratorRateTableRows = {json.dumps(method_table_rows)};
+        const refrigeratorRateTableRowsRefrigerator = {json.dumps(method_table_rows_refrigerator)};
+        const averageRatingTableRows = {json.dumps(rating_table_rows)};
+        const averageRatingTableRowsRefrigerator = {json.dumps(rating_table_rows_refrigerator)};
+        const sessionCountTableRows = {json.dumps(volume_summary_table_rows)};
+        const sessionCountTableRowsRefrigerator = {json.dumps(volume_summary_table_rows_refrigerator)};
         
         let progressionChart = null;
         let volumeChart = null;
         
+        function filterProgressionDataByParticipant(progressionDataView, progressionSessionData, participantIds) {{
+            if (!participantIds || participantIds.length === 0) {{
+                return progressionDataView;
+            }}
+            
+            // Create a set of allowed participant IDs (case-insensitive)
+            const allowedParticipantIds = new Set(participantIds.map(id => id.toLowerCase()));
+            
+            // Filter session data by participant IDs
+            const filteredSessions = progressionSessionData.filter(session => {{
+                return allowedParticipantIds.has(session.participant_id.toLowerCase());
+            }});
+            
+            // Rebuild progression data from filtered sessions
+            const filtered = Object.create(null);  // Empty object
+            const grouped = Object.create(null);  // Empty object for grouping
+            
+            for (const session of filteredSessions) {{
+                const {{session_number, user_words, method, version}} = session;
+                
+                // Determine which keys this session belongs to based on the view structure
+                // We need to match the structure of progressionDataView
+                for (const key in progressionDataView) {{
+                    if (!grouped[key]) {{
+                        grouped[key] = Object.create(null);
+                    }}
+                    
+                    // Check if this session matches this key
+                    let matches = false;
+                    if (key === method) {{
+                        matches = true;
+                    }} else if (key === `${{method}}_${{version}}`) {{
+                        matches = true;
+                    }} else if (key === version) {{
+                        matches = true;
+                    }}
+                    
+                    if (matches) {{
+                        if (!grouped[key][session_number]) {{
+                            grouped[key][session_number] = [];
+                        }}
+                        grouped[key][session_number].push(user_words);
+                    }}
+                }}
+            }}
+            
+            // Calculate averages for each key and session number
+            for (const key in progressionDataView) {{
+                filtered[key] = Object.create(null);
+                if (grouped[key]) {{
+                    for (const sessionNum in grouped[key]) {{
+                        const wordCounts = grouped[key][sessionNum];
+                        if (wordCounts && wordCounts.length > 0) {{
+                            filtered[key][sessionNum] = wordCounts.reduce((a, b) => a + b, 0) / wordCounts.length;
+                        }} else {{
+                            filtered[key][sessionNum] = progressionDataView[key][sessionNum] || 0;
+                        }}
+                    }}
+                }} else {{
+                    // No matching sessions, set to 0
+                    for (const sessionNum in progressionDataView[key]) {{
+                        filtered[key][sessionNum] = 0;
+                    }}
+                }}
+            }}
+            
+            return filtered;
+        }}
+        
         function updateProgressionChart() {{
             const view = document.getElementById('progressionView').value;
             const excludeOutliers = document.getElementById('excludeOutliersGlobal').checked;
-            const data = excludeOutliers ? progressionDataFiltered[view] : progressionData[view];
+            const participantIds = window.currentParticipantFilter || [];
+            
+            let data = excludeOutliers ? progressionDataFiltered[view] : progressionData[view];
+            let sessionData = excludeOutliers ? progressionSessionDataFiltered : progressionSessionData;
+            
+            // Apply participant filter
+            if (participantIds.length > 0) {{
+                data = filterProgressionDataByParticipant(data, sessionData, participantIds);
+            }}
             
             if (progressionChart) {{
                 progressionChart.destroy();
@@ -2180,7 +2453,7 @@ class SimpleVersionComparisonDashboard:
                 return data;
             }}
             
-            const filtered = {{}};
+            const filtered = Object.create(null);
             const timePeriods = Object.keys(data).sort();
             
             timePeriods.forEach(timePeriod => {{
@@ -2211,17 +2484,36 @@ class SimpleVersionComparisonDashboard:
         
         function updateVolumeChart() {{
             const aggregation = document.getElementById('volumeAggregation').value;
+            const refrigeratorOnly = document.getElementById('refrigeratorOnly').checked;
+            const participantIds = window.currentParticipantFilter || [];
             let volumeData;
             
-            // Select data based on aggregation level
-            if (aggregation === 'day') {{
-                volumeData = volumeDataDay;
-            }} else if (aggregation === 'week') {{
-                volumeData = volumeDataWeek;
-            }} else if (aggregation === 'month') {{
-                volumeData = volumeDataMonth;
+            // Select data based on aggregation level and refrigerator filter
+            if (refrigeratorOnly) {{
+                if (aggregation === 'day') {{
+                    volumeData = volumeDataRefrigeratorDay;
+                }} else if (aggregation === 'week') {{
+                    volumeData = volumeDataRefrigeratorWeek;
+                }} else if (aggregation === 'month') {{
+                    volumeData = volumeDataRefrigeratorMonth;
+                }} else {{
+                    volumeData = volumeDataRefrigeratorWeek;
+                }}
             }} else {{
-                volumeData = volumeDataWeek;
+                if (aggregation === 'day') {{
+                    volumeData = volumeDataDay;
+                }} else if (aggregation === 'week') {{
+                    volumeData = volumeDataWeek;
+                }} else if (aggregation === 'month') {{
+                    volumeData = volumeDataMonth;
+                }} else {{
+                    volumeData = volumeDataWeek;
+                }}
+            }}
+            
+            // Apply participant filter (participantIds already declared above)
+            if (participantIds.length > 0) {{
+                volumeData = filterVolumeDataByParticipant(volumeData, volumeSessionMaps, participantIds, aggregation);
             }}
             
             // Apply date range filter
@@ -2349,8 +2641,13 @@ class SimpleVersionComparisonDashboard:
                 : sorted[mid];
         }}
         
-        // Update median words table based on outlier filter
+        // Update median words table based on outlier filter (deprecated - now handled by updateTablesForRefrigeratorFilter)
         function updateMedianWordsTable() {{
+            updateTablesForRefrigeratorFilter();
+        }}
+        
+        // Legacy function for backward compatibility
+        function updateMedianWordsTableLegacy() {{
             const excludeOutliers = document.getElementById('excludeOutliersGlobal').checked;
             const table = document.getElementById('medianWordsTable');
             if (!table || !metricsData) return;
@@ -2381,7 +2678,7 @@ class SimpleVersionComparisonDashboard:
                     const cell = document.createElement('td');
                     const version_name = metric.version_name || '';
                     const data = excludeOutliers ? metric.median_words_by_method_filtered : metric.median_words_by_method;
-                    const method_data = data[method] || {{}};
+                    const method_data = data[method] || Object.create(null);
                     
                     let value = 0.0;
                     if (version_name === 'Control bot') {{
@@ -2461,8 +2758,13 @@ class SimpleVersionComparisonDashboard:
             tbody.appendChild(totalRow);
         }}
         
-        // Update median messages table based on outlier filter
+        // Update median messages table based on outlier filter (deprecated - now handled by updateTablesForRefrigeratorFilter)
         function updateMedianMessagesTable() {{
+            updateTablesForRefrigeratorFilter();
+        }}
+        
+        // Legacy function for backward compatibility
+        function updateMedianMessagesTableLegacy() {{
             const excludeOutliers = document.getElementById('excludeOutliersGlobal').checked;
             const table = document.getElementById('medianMessagesTable');
             if (!table || !metricsData) return;
@@ -2493,7 +2795,7 @@ class SimpleVersionComparisonDashboard:
                     const cell = document.createElement('td');
                     const version_name = metric.version_name || '';
                     const data = excludeOutliers ? metric.median_messages_by_method_filtered : metric.median_messages_by_method;
-                    const method_data = data[method] || {{}};
+                    const method_data = data[method] || Object.create(null);
                     
                     let value = 0.0;
                     if (version_name === 'Control bot') {{
@@ -2585,13 +2887,8 @@ class SimpleVersionComparisonDashboard:
                 updateProgressionChart();
             }}
             
-            // Update median words and messages tables with outlier filter
-            if (document.getElementById('medianWordsTable')) {{
-                updateMedianWordsTable();
-            }}
-            if (document.getElementById('medianMessagesTable')) {{
-                updateMedianMessagesTable();
-            }}
+            // Update all tables based on refrigerator filter (includes median words/messages)
+            updateTablesForRefrigeratorFilter();
             
             // Note: Date filtering for progression chart would require session-level date data
             // which is not currently available in the JavaScript
@@ -2624,22 +2921,395 @@ class SimpleVersionComparisonDashboard:
             }}
         }}
         
+        // Update tables based on refrigerator filter
+        function updateTablesForRefrigeratorFilter() {{
+            const refrigeratorOnly = document.getElementById('refrigeratorOnly').checked;
+            
+            // Update Summary Metrics table
+            const summaryTableBody = document.getElementById('summaryMetricsTableBody');
+            if (summaryTableBody) {{
+                summaryTableBody.innerHTML = refrigeratorOnly ? summaryTableRowsRefrigerator : summaryTableRows;
+            }}
+            
+            // Update Refrigerator Rate table
+            const refrigeratorRateTableBody = document.getElementById('refrigeratorRateTableBody');
+            if (refrigeratorRateTableBody) {{
+                refrigeratorRateTableBody.innerHTML = refrigeratorOnly ? refrigeratorRateTableRowsRefrigerator : refrigeratorRateTableRows;
+            }}
+            
+            // Update Average Rating table
+            const averageRatingTableBody = document.getElementById('averageRatingTableBody');
+            if (averageRatingTableBody) {{
+                averageRatingTableBody.innerHTML = refrigeratorOnly ? averageRatingTableRowsRefrigerator : averageRatingTableRows;
+            }}
+            
+            // Update Session Count table
+            const sessionCountTableBody = document.getElementById('sessionCountTableBody');
+            if (sessionCountTableBody) {{
+                sessionCountTableBody.innerHTML = refrigeratorOnly ? sessionCountTableRowsRefrigerator : sessionCountTableRows;
+            }}
+            
+            // Update median words and messages tables (they use metricsData which needs to be filtered)
+            // These tables are dynamically generated, so we need to update them with filtered data
+            if (refrigeratorOnly) {{
+                // Use refrigerator-filtered metrics
+                const filteredMetricsData = metricsData.map(metric => metric.refrigerator_filtered || metric);
+                updateMedianWordsTableWithData(filteredMetricsData);
+                updateMedianMessagesTableWithData(filteredMetricsData);
+            }} else {{
+                // Use regular metrics
+                updateMedianWordsTableWithData(metricsData);
+                updateMedianMessagesTableWithData(metricsData);
+            }}
+        }}
+        
+        // Update tables for participant filter
+        function updateTablesForParticipantFilter() {{
+            const participantIds = window.currentParticipantFilter || [];
+            
+            if (participantIds.length === 0) {{
+                // No participant filter, use regular data
+                return;
+            }}
+            
+            // Create a set of allowed session IDs
+            const allowedSessionIds = new Set();
+            for (const [sessionId, participantId] of Object.entries(sessionParticipantMap)) {{
+                if (participantIds.some(pid => pid.toLowerCase() === participantId.toLowerCase())) {{
+                    allowedSessionIds.add(sessionId);
+                }}
+            }}
+            
+            // Filter volume summary table (Session Count by Method and Version)
+            updateVolumeSummaryTableForParticipant(allowedSessionIds);
+            
+            // Note: Other tables (Average FLW Score, Median Words/Messages) require session-level data
+            // that is not currently stored. These would need to be recalculated from filtered sessions.
+            // For now, we show a message that participant filtering for these tables requires
+            // dashboard regeneration with participant filter applied.
+        }}
+        
+        // Update volume summary table for participant filter
+        function updateVolumeSummaryTableForParticipant(allowedSessionIds) {{
+            const table = document.getElementById('sessionCountTableBody');
+            if (!table) return;
+            
+            // Get current aggregation (default to week)
+            const aggregation = document.getElementById('volumeAggregation')?.value || 'week';
+            const sessionMap = volumeSessionMaps[aggregation] || Object.create(null);
+            
+            // Recalculate counts by method and version
+            const counts = {{
+                'Control': Object.create(null),
+                'V3': Object.create(null),
+                'V4': Object.create(null),
+                'V5': Object.create(null),
+                'V6': Object.create(null)
+            }};
+            
+            const methods = ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown'];
+            const versions = ['Control', 'V3', 'V4', 'V5', 'V6'];
+            
+            // Initialize counts
+            versions.forEach(version => {{
+                methods.forEach(method => {{
+                    counts[version][method] = 0;
+                }});
+            }});
+            
+            // Count sessions across all time periods
+            for (const timeKey in sessionMap) {{
+                for (const version in sessionMap[timeKey]) {{
+                    for (const method in sessionMap[timeKey][version]) {{
+                        const sessionIds = sessionMap[timeKey][version][method] || [];
+                        const matchingSessions = sessionIds.filter(sid => allowedSessionIds.has(sid));
+                        if (counts[version] && counts[version][method] !== undefined) {{
+                            counts[version][method] += matchingSessions.length;
+                        }}
+                    }}
+                }}
+            }}
+            
+            // Update table HTML
+            let html = '';
+            methods.forEach(method => {{
+                html += '<tr><td><strong>' + method + '</strong></td>';
+                let methodTotal = 0;
+                versions.forEach(version => {{
+                    const count = counts[version][method] || 0;
+                    html += '<td>' + count + '</td>';
+                    methodTotal += count;
+                }});
+                // All Versions column (median across versions)
+                html += '<td>' + methodTotal + '</td>';
+                html += '</tr>';
+            }});
+            
+            // Total row
+            html += '<tr style="background-color: #f8f9fa;"><td><strong>Total (All Methods)</strong></td>';
+            let versionTotals = Object.create(null);
+            versions.forEach(version => {{
+                let total = 0;
+                methods.forEach(method => {{
+                    total += counts[version][method] || 0;
+                }});
+                versionTotals[version] = total;
+                html += '<td style="font-weight: bold;">' + total + '</td>';
+            }});
+            // All Versions total
+            const allVersionsTotal = Object.values(versionTotals).reduce((a, b) => a + b, 0);
+            html += '<td style="font-weight: bold;">' + allVersionsTotal + '</td>';
+            html += '</tr>';
+            
+            table.innerHTML = html;
+        }}
+        
+        // Helper function to update median words table with specific data
+        function updateMedianWordsTableWithData(data) {{
+            const excludeOutliers = document.getElementById('excludeOutliersGlobal').checked;
+            const table = document.getElementById('medianWordsTable');
+            if (!table || !data) return;
+            
+            const tbody = table.querySelector('tbody');
+            if (!tbody) return;
+            
+            // Clear existing rows
+            tbody.innerHTML = '';
+            
+            // Get all unique methods
+            const methods = ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown'];
+            
+            // Store values for global calculation (per version and across all versions)
+            const globalValues = data.map(() => []);
+            const allVersionsValues = [];
+            
+            // Generate rows
+            methods.forEach(method => {{
+                const row = document.createElement('tr');
+                const methodCell = document.createElement('td');
+                methodCell.innerHTML = `<strong>${{method}}</strong>`;
+                row.appendChild(methodCell);
+                
+                const methodAllVersions = [];
+                
+                data.forEach((metric, idx) => {{
+                    const cell = document.createElement('td');
+                    const version_name = metric.version_name || '';
+                    const tableData = excludeOutliers ? metric.median_words_by_method_filtered : metric.median_words_by_method;
+                    const method_data = tableData[method];
+                    
+                    let value = 0.0;
+                    if (method_data === undefined || method_data === null) {{
+                        value = 0.0;
+                    }} else if (typeof method_data === 'number') {{
+                        // Direct number value (already filtered by version)
+                        value = method_data;
+                    }} else if (typeof method_data === 'object') {{
+                        // Object with version keys
+                        if (version_name === 'Control bot') {{
+                            if (method === 'Unknown') {{
+                                value = method_data.Control || 0.0;
+                            }}
+                        }} else {{
+                            const version_key = version_name.replace('Coaching bot ', '');
+                            value = method_data[version_key] || 0.0;
+                        }}
+                    }}
+                    
+                    if (value > 0) {{
+                        cell.textContent = value.toFixed(1);
+                        globalValues[idx].push(value);
+                        methodAllVersions.push(value);
+                    }} else {{
+                        cell.textContent = '-';
+                    }}
+                    row.appendChild(cell);
+                }});
+                
+                // Add "All Versions" column
+                const allVersionsCell = document.createElement('td');
+                if (methodAllVersions.length > 0) {{
+                    const allVersionsMedian = calculateMedian(methodAllVersions);
+                    if (allVersionsMedian > 0) {{
+                        allVersionsCell.textContent = allVersionsMedian.toFixed(1);
+                        allVersionsCell.style.fontWeight = 'bold';
+                        allVersionsValues.push(allVersionsMedian);
+                    }} else {{
+                        allVersionsCell.textContent = '-';
+                    }}
+                }} else {{
+                    allVersionsCell.textContent = '-';
+                }}
+                row.appendChild(allVersionsCell);
+                
+                tbody.appendChild(row);
+            }});
+            
+            // Add Total row
+            const totalRow = document.createElement('tr');
+            totalRow.style.backgroundColor = '#f8f9fa';
+            const totalCell = document.createElement('td');
+            totalCell.innerHTML = `<strong>Total (All Methods)</strong>`;
+            totalRow.appendChild(totalCell);
+            
+            globalValues.forEach(values => {{
+                const cell = document.createElement('td');
+                const globalMedian = calculateMedian(values);
+                if (globalMedian > 0) {{
+                    cell.textContent = globalMedian.toFixed(1);
+                    cell.style.fontWeight = 'bold';
+                }} else {{
+                    cell.textContent = '-';
+                }}
+                totalRow.appendChild(cell);
+            }});
+            
+            // Add "All Versions" column for Total row
+            const totalAllVersionsCell = document.createElement('td');
+            const totalAllVersionsMedian = calculateMedian(allVersionsValues.filter(v => v > 0));
+            if (totalAllVersionsMedian > 0) {{
+                totalAllVersionsCell.textContent = totalAllVersionsMedian.toFixed(1);
+                totalAllVersionsCell.style.fontWeight = 'bold';
+            }} else {{
+                totalAllVersionsCell.textContent = '-';
+            }}
+            totalRow.appendChild(totalAllVersionsCell);
+            
+            tbody.appendChild(totalRow);
+        }}
+        
+        // Helper function to update median messages table with specific data
+        function updateMedianMessagesTableWithData(data) {{
+            const excludeOutliers = document.getElementById('excludeOutliersGlobal').checked;
+            const table = document.getElementById('medianMessagesTable');
+            if (!table || !data) return;
+            
+            const tbody = table.querySelector('tbody');
+            if (!tbody) return;
+            
+            // Clear existing rows
+            tbody.innerHTML = '';
+            
+            // Get all unique methods
+            const methods = ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown'];
+            
+            // Store values for global calculation (per version and across all versions)
+            const globalValues = data.map(() => []);
+            const allVersionsValues = [];
+            
+            // Generate rows
+            methods.forEach(method => {{
+                const row = document.createElement('tr');
+                const methodCell = document.createElement('td');
+                methodCell.innerHTML = `<strong>${{method}}</strong>`;
+                row.appendChild(methodCell);
+                
+                const methodAllVersions = [];
+                
+                data.forEach((metric, idx) => {{
+                    const cell = document.createElement('td');
+                    const version_name = metric.version_name || '';
+                    const tableData = excludeOutliers ? metric.median_messages_by_method_filtered : metric.median_messages_by_method;
+                    const method_data = tableData[method];
+                    
+                    let value = 0.0;
+                    if (method_data === undefined || method_data === null) {{
+                        value = 0.0;
+                    }} else if (typeof method_data === 'number') {{
+                        // Direct number value (already filtered by version)
+                        value = method_data;
+                    }} else if (typeof method_data === 'object') {{
+                        // Object with version keys
+                        if (version_name === 'Control bot') {{
+                            if (method === 'Unknown') {{
+                                value = method_data.Control || 0.0;
+                            }}
+                        }} else {{
+                            const version_key = version_name.replace('Coaching bot ', '');
+                            value = method_data[version_key] || 0.0;
+                        }}
+                    }}
+                    
+                    if (value > 0) {{
+                        cell.textContent = value.toFixed(1);
+                        globalValues[idx].push(value);
+                        methodAllVersions.push(value);
+                    }} else {{
+                        cell.textContent = '-';
+                    }}
+                    row.appendChild(cell);
+                }});
+                
+                // Add "All Versions" column
+                const allVersionsCell = document.createElement('td');
+                if (methodAllVersions.length > 0) {{
+                    const allVersionsMedian = calculateMedian(methodAllVersions);
+                    if (allVersionsMedian > 0) {{
+                        allVersionsCell.textContent = allVersionsMedian.toFixed(1);
+                        allVersionsCell.style.fontWeight = 'bold';
+                        allVersionsValues.push(allVersionsMedian);
+                    }} else {{
+                        allVersionsCell.textContent = '-';
+                    }}
+                }} else {{
+                    allVersionsCell.textContent = '-';
+                }}
+                row.appendChild(allVersionsCell);
+                
+                tbody.appendChild(row);
+            }});
+            
+            // Add Total row
+            const totalRow = document.createElement('tr');
+            totalRow.style.backgroundColor = '#f8f9fa';
+            const totalCell = document.createElement('td');
+            totalCell.innerHTML = `<strong>Total (All Methods)</strong>`;
+            totalRow.appendChild(totalCell);
+            
+            globalValues.forEach(values => {{
+                const cell = document.createElement('td');
+                const globalMedian = calculateMedian(values);
+                if (globalMedian > 0) {{
+                    cell.textContent = globalMedian.toFixed(1);
+                    cell.style.fontWeight = 'bold';
+                }} else {{
+                    cell.textContent = '-';
+                }}
+                totalRow.appendChild(cell);
+            }});
+            
+            // Add "All Versions" column for Total row
+            const totalAllVersionsCell = document.createElement('td');
+            const totalAllVersionsMedian = calculateMedian(allVersionsValues.filter(v => v > 0));
+            if (totalAllVersionsMedian > 0) {{
+                totalAllVersionsCell.textContent = totalAllVersionsMedian.toFixed(1);
+                totalAllVersionsCell.style.fontWeight = 'bold';
+            }} else {{
+                totalAllVersionsCell.textContent = '-';
+            }}
+            totalRow.appendChild(totalAllVersionsCell);
+            
+            tbody.appendChild(totalRow);
+        }}
+        
         // Reset global filters
         function resetGlobalFilters() {{
             // Reset date filters
             document.getElementById('startDate').value = '';
             document.getElementById('endDate').value = '';
             
-            // Reset participant filter (clear selections)
-            const participantSelect = document.getElementById('participantFilter');
-            if (participantSelect) {{
-                Array.from(participantSelect.options).forEach(option => {{
-                    option.selected = false;
-                }});
+            // Reset participant filter (clear textarea)
+            const participantTextarea = document.getElementById('participantFilter');
+            if (participantTextarea) {{
+                participantTextarea.value = '';
             }}
+            window.currentParticipantFilter = [];
             
             // Reset outlier filter (uncheck)
             document.getElementById('excludeOutliersGlobal').checked = false;
+            
+            // Reset refrigerator filter (uncheck)
+            document.getElementById('refrigeratorOnly').checked = false;
             
             // Note: excludeSplitSessions and excludeTestSessions are checked by default
             // and should remain checked as they're data quality filters
@@ -2648,31 +3318,204 @@ class SimpleVersionComparisonDashboard:
             applyGlobalFilters();
         }}
         
-        // Populate participant filter dropdown
-        function populateParticipantFilter() {{
-            const participantSelect = document.getElementById('participantFilter');
+        // Apply participant filter to all charts and tables
+        function applyParticipantFilter() {{
+            const participantTextarea = document.getElementById('participantFilter');
+            if (!participantTextarea) {{
+                console.error('Participant filter textarea not found');
+                return;
+            }}
             
-            // Extract unique participant IDs from the data
-            // This would need to be populated from the actual session data
-            // For now, we'll add some sample participants
-            const sampleParticipants = [
-                'participant_001', 'participant_002', 'participant_003', 
-                'participant_004', 'participant_005', 'participant_006'
-            ];
+            const participantText = participantTextarea.value.trim();
+            let participantIds = [];
             
-            sampleParticipants.forEach(participant => {{
-                const option = document.createElement('option');
-                option.value = participant;
-                option.textContent = participant;
-                participantSelect.appendChild(option);
+            if (participantText) {{
+                // Split by newlines and filter out empty lines
+                participantIds = participantText.split('\\n')
+                    .map(id => id.trim())
+                    .filter(id => id.length > 0);
+            }}
+            
+            console.log('Applying participant filter:', participantIds);
+            
+            // Store current filter state
+            window.currentParticipantFilter = participantIds;
+            
+            // Apply filters to all charts and tables
+            applyGlobalFilters();
+            
+            // Show feedback
+            const existingFeedback = participantTextarea.parentNode.querySelector('.alert');
+            if (existingFeedback) {{
+                existingFeedback.remove();
+            }}
+            
+            const feedback = document.createElement('div');
+            feedback.className = 'alert alert-info mt-2';
+            if (participantIds.length > 0) {{
+                // Check if participant IDs exist in the map (case-insensitive)
+                const participantIdValues = Object.values(sessionParticipantMap);
+                const participantIdValuesLower = participantIdValues.map(id => id.toLowerCase());
+                const foundCount = participantIds.filter(id => {{
+                    return participantIdValues.includes(id) || participantIdValuesLower.includes(id.toLowerCase());
+                }}).length;
+                
+                // Get sample participant IDs for debugging
+                const sampleIds = Array.from(new Set(participantIdValues)).slice(0, 3);
+                
+                if (foundCount === 0) {{
+                    feedback.className = 'alert alert-warning mt-2';
+                    feedback.innerHTML = `<i class="fas fa-exclamation-triangle me-1"></i>Warning: No sessions found for the provided participant ID(s). Check browser console for sample participant IDs.`;
+                    console.warn('Participant IDs not found. Sample participant IDs in data:', sampleIds);
+                }} else {{
+                    feedback.innerHTML = `<i class="fas fa-info-circle me-1"></i>Participant filter applied: Showing data for ${{foundCount}} of ${{participantIds.length}} participant(s). Tables require dashboard regeneration for full filtering.`;
+                }}
+            }} else {{
+                feedback.innerHTML = `<i class="fas fa-info-circle me-1"></i>Participant filter cleared: Showing all participants.`;
+            }}
+            participantTextarea.parentNode.appendChild(feedback);
+            
+            // Remove feedback after 8 seconds (longer for warnings)
+            setTimeout(() => {{
+                if (feedback.parentNode) {{
+                    feedback.remove();
+                }}
+            }}, 8000);
+        }}
+        
+        // Filter volume data by participant IDs using session mappings
+        function filterVolumeDataByParticipant(volumeData, volumeSessionMaps, participantIds, aggregation) {{
+            if (!participantIds || participantIds.length === 0) {{
+                return volumeData;
+            }}
+            
+            // Create a set of allowed session IDs
+            const allowedSessionIds = new Set();
+            let foundParticipant = false;
+            
+            // Create a set of participant IDs for faster lookup (case-insensitive)
+            const participantIdSet = new Set(participantIds.map(id => id.toLowerCase()));
+            const participantIdMap = new Map(participantIds.map(id => [id.toLowerCase(), id]));
+            
+            for (const [sessionId, participantId] of Object.entries(sessionParticipantMap)) {{
+                // Try exact match first
+                if (participantIds.includes(participantId)) {{
+                    allowedSessionIds.add(sessionId);
+                    foundParticipant = true;
+                }} else if (participantIdSet.has(participantId.toLowerCase())) {{
+                    // Case-insensitive match
+                    allowedSessionIds.add(sessionId);
+                    foundParticipant = true;
+                }}
+            }}
+            
+            // Debug logging
+            const sampleParticipantIds = Array.from(new Set(Object.values(sessionParticipantMap))).slice(0, 5);
+            console.log('Participant filter debug:', {{
+                participantIds: participantIds,
+                foundParticipant: foundParticipant,
+                allowedSessionIdsCount: allowedSessionIds.size,
+                sessionParticipantMapSize: Object.keys(sessionParticipantMap).length,
+                sampleParticipantIds: sampleParticipantIds,
+                volumeSessionMapsKeys: Object.keys(volumeSessionMaps),
+                aggregation: aggregation
             }});
+            
+            // Check if participant IDs match any in the map (case-insensitive)
+            const participantIdSetFromMap = new Set(Object.values(sessionParticipantMap));
+            const matchingIds = participantIds.filter(id => {{
+                // Try exact match
+                if (participantIdSetFromMap.has(id)) return true;
+                // Try case-insensitive match
+                for (const pid of participantIdSetFromMap) {{
+                    if (pid.toLowerCase() === id.toLowerCase()) return true;
+                }}
+                return false;
+            }});
+            
+            if (matchingIds.length === 0) {{
+                console.warn('No matching participant IDs found. Searched for:', participantIds);
+                console.warn('Sample participant IDs in data:', sampleParticipantIds);
+                // Return empty data structure
+                const empty = Object.create(null);
+                for (const timeKey in volumeData) {{
+                    empty[timeKey] = Object.create(null);
+                    for (const version in volumeData[timeKey]) {{
+                        empty[timeKey][version] = Object.create(null);
+                        for (const method in volumeData[timeKey][version]) {{
+                            empty[timeKey][version][method] = 0;
+                        }}
+                    }}
+                }}
+                return empty;
+            }}
+            
+            if (!foundParticipant) {{
+                console.warn('Participant IDs found but no sessions mapped:', matchingIds);
+                // Return empty data structure
+                const empty = Object.create(null);
+                for (const timeKey in volumeData) {{
+                    empty[timeKey] = Object.create(null);
+                    for (const version in volumeData[timeKey]) {{
+                        empty[timeKey][version] = Object.create(null);
+                        for (const method in volumeData[timeKey][version]) {{
+                            empty[timeKey][version][method] = 0;
+                        }}
+                    }}
+                }}
+                return empty;
+            }}
+            
+            // Recalculate volume data by filtering sessions
+            const filtered = Object.create(null);
+            const sessionMap = volumeSessionMaps[aggregation] || Object.create(null);
+            
+            let totalMatchingSessions = 0;
+            
+            for (const timeKey in volumeData) {{
+                filtered[timeKey] = Object.create(null);
+                for (const version in volumeData[timeKey]) {{
+                    filtered[timeKey][version] = Object.create(null);
+                    for (const method in volumeData[timeKey][version]) {{
+                        // Count only sessions that match participant filter
+                        const sessionIds = sessionMap[timeKey]?.[version]?.[method] || [];
+                        const matchingSessions = sessionIds.filter(sid => allowedSessionIds.has(sid));
+                        filtered[timeKey][version][method] = matchingSessions.length;
+                        totalMatchingSessions += matchingSessions.length;
+                    }}
+                }}
+            }}
+            
+            console.log('Volume filter result:', {{
+                totalMatchingSessions: totalMatchingSessions,
+                allowedSessionIdsCount: allowedSessionIds.size,
+                timeKeysCount: Object.keys(filtered).length
+            }});
+            
+            return filtered;
+        }}
+        
+        // Filter progression data by participant IDs
+        function filterProgressionDataByParticipant(progressionData, participantIds) {{
+            if (!participantIds || participantIds.length === 0) {{
+                return progressionData;
+            }}
+            
+            // Create a set of allowed participant IDs
+            const allowedParticipantIds = new Set(participantIds);
+            
+            // Note: Progression data structure doesn't directly include participant IDs
+            // We need to filter at the source. For now, return original data
+            // and add a note that full filtering requires regeneration
+            return progressionData;
         }}
         
         // Initialize chart on page load
         document.addEventListener('DOMContentLoaded', function() {{
-            populateParticipantFilter();
+            window.currentParticipantFilter = [];  // Initialize participant filter
             updateProgressionChart();
             updateVolumeChart();
+            updateTablesForRefrigeratorFilter();  // Initialize tables
             
             // Add event listeners for date inputs to auto-apply filters
             const startDateInput = document.getElementById('startDate');
@@ -2734,8 +3577,11 @@ class SimpleVersionComparisonDashboard:
             
             print(f"  Found {len(version_sessions)} sessions for {version_name}")
             
-            # Calculate metrics
-            metric = self.calculate_metrics_for_version(version_name, version_sessions, messages_data)
+            # Calculate metrics (both with and without refrigerator filter)
+            metric = self.calculate_metrics_for_version(version_name, version_sessions, messages_data, refrigerator_only=False)
+            metric_refrigerator = self.calculate_metrics_for_version(version_name, version_sessions, messages_data, refrigerator_only=True)
+            # Store both versions
+            metric['refrigerator_filtered'] = metric_refrigerator
             metrics.append(metric)
         
         # Calculate median words and messages by method and version (needs all sessions)
@@ -2745,6 +3591,22 @@ class SimpleVersionComparisonDashboard:
         median_words_by_method_filtered = self.calculate_median_words_by_method_and_version(sessions, messages_data, exclude_outliers=True)
         median_messages_by_method = self.calculate_median_messages_by_method_and_version(sessions, messages_data, exclude_outliers=False)
         median_messages_by_method_filtered = self.calculate_median_messages_by_method_and_version(sessions, messages_data, exclude_outliers=True)
+        
+        # Filter sessions to only refrigerator examples for refrigerator-filtered median calculations
+        refrigerator_sessions = []
+        for session in sessions:
+            session_id = session.get('id')
+            session_messages = messages_data.get(session_id, [])
+            if not self.should_exclude_session(session, session_messages):
+                if self.has_refrigerator_example_tag(session, session_messages):
+                    refrigerator_sessions.append(session)
+        
+        # Calculate median words and messages for refrigerator-filtered sessions
+        print("Calculating median words and messages for refrigerator-filtered sessions...")
+        median_words_by_method_refrigerator = self.calculate_median_words_by_method_and_version(refrigerator_sessions, messages_data, exclude_outliers=False)
+        median_words_by_method_filtered_refrigerator = self.calculate_median_words_by_method_and_version(refrigerator_sessions, messages_data, exclude_outliers=True)
+        median_messages_by_method_refrigerator = self.calculate_median_messages_by_method_and_version(refrigerator_sessions, messages_data, exclude_outliers=False)
+        median_messages_by_method_filtered_refrigerator = self.calculate_median_messages_by_method_and_version(refrigerator_sessions, messages_data, exclude_outliers=True)
         
         # Add the median data to each metric, filtered by version (both filtered and unfiltered)
         for metric in metrics:
@@ -2786,26 +3648,85 @@ class SimpleVersionComparisonDashboard:
             metric['median_messages_by_method'] = filtered_messages
             metric['median_words_by_method_filtered'] = filtered_words_outlier
             metric['median_messages_by_method_filtered'] = filtered_messages_outlier
+            
+            # Add median data to refrigerator_filtered metric
+            if 'refrigerator_filtered' in metric:
+                version_name = metric.get('version_name', '')
+                filtered_words_r = {}
+                filtered_messages_r = {}
+                filtered_words_outlier_r = {}
+                filtered_messages_outlier_r = {}
+                
+                for method in median_words_by_method_refrigerator:
+                    filtered_words_r[method] = {}
+                    filtered_messages_r[method] = {}
+                    filtered_words_outlier_r[method] = {}
+                    filtered_messages_outlier_r[method] = {}
+                    
+                    # For Control bot, only show data under Unknown method
+                    if version_name == 'Control bot':
+                        if method == 'Unknown':
+                            filtered_words_r[method] = median_words_by_method_refrigerator[method].get('Control', {})
+                            filtered_messages_r[method] = median_messages_by_method_refrigerator[method].get('Control', {})
+                            filtered_words_outlier_r[method] = median_words_by_method_filtered_refrigerator[method].get('Control', {})
+                            filtered_messages_outlier_r[method] = median_messages_by_method_filtered_refrigerator[method].get('Control', {})
+                    else:
+                        # For coaching bots, show data for their version
+                        version_key = version_name.replace('Coaching bot ', '')
+                        filtered_words_r[method] = median_words_by_method_refrigerator[method].get(version_key, {})
+                        filtered_messages_r[method] = median_messages_by_method_refrigerator[method].get(version_key, {})
+                        filtered_words_outlier_r[method] = median_words_by_method_filtered_refrigerator[method].get(version_key, {})
+                        filtered_messages_outlier_r[method] = median_messages_by_method_filtered_refrigerator[method].get(version_key, {})
+                
+                metric['refrigerator_filtered']['median_words_by_method'] = filtered_words_r
+                metric['refrigerator_filtered']['median_messages_by_method'] = filtered_messages_r
+                metric['refrigerator_filtered']['median_words_by_method_filtered'] = filtered_words_outlier_r
+                metric['refrigerator_filtered']['median_messages_by_method_filtered'] = filtered_messages_outlier_r
         
         # Calculate session progression data for line graph (both with and without outliers)
+        # Also get session-level data for filtering
         print("Calculating session progression data...")
-        progression_data = self.calculate_session_progression_data(sessions, messages_data)
-        progression_data_filtered = self.calculate_session_progression_data(sessions, messages_data, exclude_outliers=True)
+        progression_data, progression_session_data = self.calculate_session_progression_data(sessions, messages_data, exclude_outliers=False, return_session_data=True)
+        progression_data_filtered, progression_session_data_filtered = self.calculate_session_progression_data(sessions, messages_data, exclude_outliers=True, return_session_data=True)
         
         # Calculate rating statistics
         print("Calculating rating statistics...")
         rating_stats = self.calculate_rating_statistics(sessions, messages_data)
         
-        # Calculate session volume data for all aggregation levels
+        # Calculate session volume data for all aggregation levels (both with and without refrigerator filter)
+        # Also get session mappings to track which sessions contribute to each count
         print("Calculating session volume data...")
+        volume_data_day, volume_session_map_day = self.calculate_session_volume_by_time(sessions, messages_data, aggregation='day', refrigerator_only=False, return_session_mapping=True)
+        volume_data_week, volume_session_map_week = self.calculate_session_volume_by_time(sessions, messages_data, aggregation='week', refrigerator_only=False, return_session_mapping=True)
+        volume_data_month, volume_session_map_month = self.calculate_session_volume_by_time(sessions, messages_data, aggregation='month', refrigerator_only=False, return_session_mapping=True)
+        
         volume_data = {
-            'day': self.calculate_session_volume_by_time(sessions, messages_data, aggregation='day'),
-            'week': self.calculate_session_volume_by_time(sessions, messages_data, aggregation='week'),
-            'month': self.calculate_session_volume_by_time(sessions, messages_data, aggregation='month')
+            'day': volume_data_day,
+            'week': volume_data_week,
+            'month': volume_data_month
+        }
+        volume_session_maps = {
+            'day': volume_session_map_day,
+            'week': volume_session_map_week,
+            'month': volume_session_map_month
         }
         
+        volume_data_refrigerator = {
+            'day': self.calculate_session_volume_by_time(sessions, messages_data, aggregation='day', refrigerator_only=True),
+            'week': self.calculate_session_volume_by_time(sessions, messages_data, aggregation='week', refrigerator_only=True),
+            'month': self.calculate_session_volume_by_time(sessions, messages_data, aggregation='month', refrigerator_only=True)
+        }
+        
+        # Create session_id -> participant_id mapping for client-side filtering
+        session_participant_map = {}
+        for session in sessions:
+            session_id = session.get('id')
+            participant_id = session.get('participant', {}).get('identifier', '')
+            if session_id and participant_id:
+                session_participant_map[session_id] = participant_id
+        
         # Generate HTML
-        html_content = self.generate_dashboard_html(metrics, progression_data, rating_stats, progression_data_filtered, volume_data)
+        html_content = self.generate_dashboard_html(metrics, progression_data, rating_stats, progression_data_filtered, volume_data, volume_data_refrigerator, session_participant_map, volume_session_maps, progression_session_data, progression_session_data_filtered)
         
         # Save to file
         output_file = self.output_dir / "version_comparison_dashboard.html"

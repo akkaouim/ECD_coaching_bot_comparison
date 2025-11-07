@@ -320,20 +320,41 @@ def load_sessions_generator(sessions_dir):
         <!-- Navigation -->
     </nav>
     <div class="container mt-4">
-        <div class="row">
-            <div class="col-12">
+        <!-- Global Filters Section -->
+        <!-- Tab Navigation -->
+        <div class="tab-content" id="dashboardTabContent">
+            <!-- Summary Tab -->
+            <div class="tab-pane fade show active" id="summary">
                 <!-- Summary Metrics Table -->
+                <!-- Summary Metrics - All Versions vs Refrigerator Examples Table -->
             </div>
-        </div>
-        <div class="row mt-4">
-            <div class="col-12">
-                <!-- Definitions Section -->
+            <!-- Performance Tab -->
+            <div class="tab-pane fade" id="performance">
+                <!-- Performance Tables -->
+            </div>
+            <!-- User Engagement Tab -->
+            <div class="tab-pane fade" id="engagement">
+                <!-- Engagement Tables and Charts -->
+            </div>
+            <!-- Session Volume Tab -->
+            <div class="tab-pane fade" id="volume">
+                <!-- Volume Chart and Table -->
+            </div>
+            <!-- Definitions Tab -->
+            <div class="tab-pane fade" id="definitions">
+                <!-- Definitions Content -->
             </div>
         </div>
     </div>
 </body>
 </html>
 ```
+
+### Tab Structure
+- **Bootstrap Tab System**: Uses Bootstrap 5 tab-pane structure for proper tab isolation
+- **Summary Tab**: Contains both the main summary metrics table and the aggregated "All Versions vs Refrigerator Examples" table
+- **Tab Isolation**: Each tab-pane is properly closed to prevent content bleeding between tabs
+- **Proper Nesting**: All content within each tab is properly indented and nested within the tab-pane div
 
 ### CSS Specifications
 - **Framework**: Bootstrap 5.3.0
