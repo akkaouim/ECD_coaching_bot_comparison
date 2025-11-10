@@ -1904,35 +1904,35 @@ class SimpleVersionComparisonDashboard:
                 <div class="tab-content" id="dashboardTabContent">
                     <!-- Summary Tab -->
                     <div class="tab-pane fade show active" id="summary" role="tabpanel" aria-labelledby="summary-tab">
-                        <div class="row">
-                            <div class="col-12">
-                                <div class="card">
-                                    <div class="card-header">
-                                        <h3>Summary Metrics by Version</h3>
-                                    </div>
-                                    <div class="card-body">
-                                        <div class="table-responsive">
-                                            <table class="table table-striped table-hover">
-                                                <thead class="table-dark">
-                                                    <tr>
-                                                        <th>Coaching Bot Version</th>
-                                                        <th># Sessions</th>
-                                                        <th># Annotated Sessions</th>
-                                                        <th>Refrigeration Examples (%)</th>
-                                                        <th>Median Human Words per Session</th>
-                                                        <th>Average Session Rating</th>
-                                                    </tr>
-                                                </thead>
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Summary Metrics by Version</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th>Coaching Bot Version</th>
+                                        <th># Sessions</th>
+                                        <th># Annotated Sessions</th>
+                                        <th>Refrigeration Examples (%)</th>
+                                        <th>Median Human Words per Session</th>
+                                        <th>Average Session Rating</th>
+                                    </tr>
+                                </thead>
                                                 <tbody id="summaryMetricsTableBody">
-                                                    {table_rows}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
+                                    {table_rows}
+                                </tbody>
+                            </table>
                         </div>
-                        
+                    </div>
+                </div>
+            </div>
+        </div>
+
                         <!-- Aggregated Summary Table -->
                         <div class="row mt-4">
                             <div class="col-12">
@@ -2237,10 +2237,10 @@ class SimpleVersionComparisonDashboard:
                                 </div>
                             </div>
                         </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
