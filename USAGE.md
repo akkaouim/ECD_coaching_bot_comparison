@@ -56,6 +56,7 @@ The dashboard consists of six main sections:
    - Core comparison metrics for each version
    - "Total (All Versions)" row showing aggregated totals across all versions
    - Summary Metrics - All Versions vs Refrigerator Examples table (exclusive to Summary tab)
+     - Includes three rows: "All Versions", "Refrigerator Example Sessions Only", and "Not Refrigerator Example Sessions Only"
    - Sortable and responsive table
    - Color-coded headers
 
@@ -112,12 +113,15 @@ The dashboard consists of six main sections:
 
 #### Refrigerator Example Rate by Method and Version
 - **What it measures**: Percentage of annotated sessions with "refrigerator_example" tag, grouped by coaching method and bot version
-- **Calculation**: (Refrigerator sessions / Annotated sessions) × 100 for each method-version combination
+- **Calculation Modes** (toggleable):
+  1. **Annotated mode**: `refrigerator_example / total annotated sessions` - Uses all annotated sessions as denominator
+  2. **Explicit mode**: `refrigerator_example / (refrigerator_example + not_refrigerator_example)` - Uses only explicitly tagged sessions as denominator
 - **Method Detection**: Based on session tags (`coach_method_*`) or message content analysis
 - **Interpretation**: Higher percentages indicate more specific coaching scenarios for that method and version
 - **Aggregated Views**: 
   - "All Versions" column shows the average rate across all versions for each method
   - "Total (All Methods)" row shows the average rate across all methods for each version
+- **Toggle Feature**: Users can switch between the two calculation modes using radio buttons above the table
 
 #### Median Number of Participant Messages per Session by Method and Version
 - **What it measures**: Median number of participant messages per session, grouped by coaching method and bot version

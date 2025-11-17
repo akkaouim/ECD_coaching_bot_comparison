@@ -251,6 +251,20 @@ class SimpleVersionComparisonDashboard:
         
         return False
     
+    def has_not_refrigerator_example_tag(self, session: Dict, messages: List[Dict] = None) -> bool:
+        """Check if session has not_refrigerator_example tag"""
+        # Check session tags
+        if 'not_refrigerator_example' in session.get('tags', []):
+            return True
+        
+        # Check message tags if messages provided
+        if messages:
+            for message in messages:
+                if 'not_refrigerator_example' in message.get('tags', []):
+                    return True
+        
+        return False
+    
     def detect_coaching_method(self, session: Dict, messages: List[Dict] = None) -> str:
         """Detect coaching method from tags or message content"""
         # First, check for method tags in session
@@ -299,8 +313,13 @@ class SimpleVersionComparisonDashboard:
         
         return 'Unknown'
     
-    def calculate_refrigerator_rate_by_method(self, sessions: List[Dict], messages_data: Dict) -> Dict[str, float]:
-        """Calculate refrigerator example rate by coaching method"""
+    def calculate_refrigerator_rate_by_method(self, sessions: List[Dict], messages_data: Dict) -> Dict[str, Dict[str, float]]:
+        """Calculate refrigerator example rate by coaching method
+        
+        Returns a dict with two calculation modes:
+        - 'annotated': refrigerator_example / total annotated sessions (refrigerator_example OR not_refrigerator_example)
+        - 'explicit': refrigerator_example / (refrigerator_example + not_refrigerator_example)
+        """
         # Group sessions by method
         method_sessions = {}
         for session in sessions:
@@ -320,25 +339,46 @@ class SimpleVersionComparisonDashboard:
         # Calculate rates for each method
         method_rates = {}
         for method, session_list in method_sessions.items():
-            # Filter sessions that have refrigerator annotations (refrigerator_example OR not_refrigerator_example)
-            annotated_sessions = []
+            # For "annotated" mode: use ALL annotated sessions (not just refrigerator-tagged ones)
+            all_annotated_sessions = []
+            # For "explicit" mode: only sessions with explicit refrigerator tags
+            refrigerator_annotated_sessions = []
+            
             for session, messages in session_list:
+                # Check if session is annotated (has any non-version, non-coaching-method tags)
+                if self.is_annotated_session(session, messages):
+                    all_annotated_sessions.append((session, messages))
+                
+                # Check if session has refrigerator-related tags
                 if self.has_refrigerator_annotation(session, messages):
-                    annotated_sessions.append((session, messages))
+                    refrigerator_annotated_sessions.append((session, messages))
             
-            if not annotated_sessions:
-                method_rates[method] = 0.0
-                continue
-            
-            # Count sessions with refrigerator_example tag
-            refrigerator_count = 0
-            for session, messages in annotated_sessions:
+            # Count refrigerator examples in all annotated sessions (for "annotated" mode)
+            refrigerator_count_annotated = 0
+            for session, messages in all_annotated_sessions:
                 if self.has_refrigerator_example_tag(session, messages):
-                    refrigerator_count += 1
+                    refrigerator_count_annotated += 1
             
-            # Calculate rate
-            rate = (refrigerator_count / len(annotated_sessions)) * 100
-            method_rates[method] = rate
+            # Count refrigerator examples and not-refrigerator in explicitly tagged sessions (for "explicit" mode)
+            refrigerator_count_explicit = 0
+            not_refrigerator_count = 0
+            for session, messages in refrigerator_annotated_sessions:
+                if self.has_refrigerator_example_tag(session, messages):
+                    refrigerator_count_explicit += 1
+                elif self.has_not_refrigerator_example_tag(session, messages):
+                    not_refrigerator_count += 1
+            
+            # Calculate rate 1: refrigerator_example / total annotated sessions (ALL annotated sessions)
+            rate_annotated = (refrigerator_count_annotated / len(all_annotated_sessions)) * 100 if all_annotated_sessions else 0.0
+            
+            # Calculate rate 2: refrigerator_example / (refrigerator_example + not_refrigerator_example)
+            explicit_total = refrigerator_count_explicit + not_refrigerator_count
+            rate_explicit = (refrigerator_count_explicit / explicit_total) * 100 if explicit_total > 0 else 0.0
+            
+            method_rates[method] = {
+                'annotated': rate_annotated,
+                'explicit': rate_explicit
+            }
         
         return method_rates
 
@@ -1300,8 +1340,13 @@ class SimpleVersionComparisonDashboard:
         
         return rows
     
-    def generate_method_table_rows(self, metrics: List[Dict]) -> str:
-        """Generate table rows for refrigerator rate by method"""
+    def generate_method_table_rows(self, metrics: List[Dict], calculation_mode: str = 'annotated') -> str:
+        """Generate table rows for refrigerator rate by method with data attributes for both modes
+        
+        Args:
+            metrics: List of metric dictionaries
+            calculation_mode: 'annotated' or 'explicit' (default display mode)
+        """
         # Get all unique methods across all versions
         all_methods = set()
         for metric in metrics:
@@ -1313,56 +1358,87 @@ class SimpleVersionComparisonDashboard:
         sorted_methods = [method for method in method_order if method in all_methods]
         sorted_methods.extend([method for method in all_methods if method not in method_order])
         
-        # Store values for global calculation
-        global_values = [[] for _ in metrics]
-        all_versions_values = []  # For "All Versions" column
+        # Store values for global calculation for both modes
+        global_values_annotated = [[] for _ in metrics]
+        global_values_explicit = [[] for _ in metrics]
+        all_versions_values_annotated = []
+        all_versions_values_explicit = []
         
         rows = ""
         for method in sorted_methods:
             row = f"<tr><td><strong>{method}</strong></td>"
-            method_all_versions = []  # Collect values across all versions for this method
+            method_all_versions_annotated = []
+            method_all_versions_explicit = []
             
             for idx, metric in enumerate(metrics):
                 method_rates = metric.get('method_refrigerator_rates', {})
-                rate = method_rates.get(method, 0.0)
-                if rate and rate > 0:
-                    row += f"<td>{rate:.1f}%</td>"
-                    global_values[idx].append(rate)
-                    method_all_versions.append(rate)
+                method_data = method_rates.get(method, {})
+                
+                # Extract both rates
+                if isinstance(method_data, dict):
+                    rate_annotated = method_data.get('annotated', 0.0)
+                    rate_explicit = method_data.get('explicit', 0.0)
                 else:
-                    row += f"<td>-</td>"
+                    # Backward compatibility: if it's a float, use it for both
+                    rate_annotated = method_data if isinstance(method_data, (int, float)) else 0.0
+                    rate_explicit = rate_annotated
+                
+                # Display the selected mode
+                display_rate = rate_annotated if calculation_mode == 'annotated' else rate_explicit
+                
+                if display_rate and display_rate > 0:
+                    row += f"<td data-mode-annotated=\"{rate_annotated:.1f}\" data-mode-explicit=\"{rate_explicit:.1f}\">{display_rate:.1f}%</td>"
+                    global_values_annotated[idx].append(rate_annotated)
+                    global_values_explicit[idx].append(rate_explicit)
+                    method_all_versions_annotated.append(rate_annotated)
+                    method_all_versions_explicit.append(rate_explicit)
+                else:
+                    row += f"<td data-mode-annotated=\"-\" data-mode-explicit=\"-\">-</td>"
             
             # Add "All Versions" column for this method
-            if method_all_versions:
-                all_versions_avg = sum(method_all_versions) / len(method_all_versions)
-                row += f"<td style='font-weight: bold;'>{all_versions_avg:.1f}%</td>"
-                all_versions_values.append(all_versions_avg)
+            if method_all_versions_annotated:
+                all_versions_avg_annotated = sum(method_all_versions_annotated) / len(method_all_versions_annotated)
+                all_versions_avg_explicit = sum(method_all_versions_explicit) / len(method_all_versions_explicit) if method_all_versions_explicit else 0.0
+                display_avg = all_versions_avg_annotated if calculation_mode == 'annotated' else all_versions_avg_explicit
+                row += f"<td style='font-weight: bold;' data-mode-annotated=\"{all_versions_avg_annotated:.1f}\" data-mode-explicit=\"{all_versions_avg_explicit:.1f}\">{display_avg:.1f}%</td>"
+                all_versions_values_annotated.append(all_versions_avg_annotated)
+                all_versions_values_explicit.append(all_versions_avg_explicit)
             else:
-                row += "<td>-</td>"
-                all_versions_values.append(0)
+                row += "<td data-mode-annotated=\"-\" data-mode-explicit=\"-\">-</td>"
+                all_versions_values_annotated.append(0)
+                all_versions_values_explicit.append(0)
             
             row += "</tr>"
             rows += row
         
         # Add Total row
         total_row = '<tr style="background-color: #f8f9fa;"><td><strong>Total (All Methods)</strong></td>'
-        for idx, values in enumerate(global_values):
-            if values:
-                total_avg = sum(values) / len(values)
-                total_row += f"<td style='font-weight: bold;'>{total_avg:.1f}%</td>"
+        for idx in range(len(metrics)):
+            values_annotated = global_values_annotated[idx]
+            values_explicit = global_values_explicit[idx]
+            
+            if values_annotated:
+                total_avg_annotated = sum(values_annotated) / len(values_annotated)
+                total_avg_explicit = sum(values_explicit) / len(values_explicit) if values_explicit else 0.0
+                display_total = total_avg_annotated if calculation_mode == 'annotated' else total_avg_explicit
+                total_row += f"<td style='font-weight: bold;' data-mode-annotated=\"{total_avg_annotated:.1f}\" data-mode-explicit=\"{total_avg_explicit:.1f}\">{display_total:.1f}%</td>"
             else:
-                total_row += "<td>-</td>"
+                total_row += "<td data-mode-annotated=\"-\" data-mode-explicit=\"-\">-</td>"
         
         # Add "All Versions" column for Total row
-        if all_versions_values:
-            all_versions_filtered = [v for v in all_versions_values if v > 0]
-            if all_versions_filtered:
-                total_all_versions = sum(all_versions_filtered) / len(all_versions_filtered)
-                total_row += f"<td style='font-weight: bold;'>{total_all_versions:.1f}%</td>"
+        if all_versions_values_annotated:
+            all_versions_filtered_annotated = [v for v in all_versions_values_annotated if v > 0]
+            all_versions_filtered_explicit = [v for v in all_versions_values_explicit if v > 0]
+            
+            if all_versions_filtered_annotated:
+                total_all_versions_annotated = sum(all_versions_filtered_annotated) / len(all_versions_filtered_annotated)
+                total_all_versions_explicit = sum(all_versions_filtered_explicit) / len(all_versions_filtered_explicit) if all_versions_filtered_explicit else 0.0
+                display_total_all = total_all_versions_annotated if calculation_mode == 'annotated' else total_all_versions_explicit
+                total_row += f"<td style='font-weight: bold;' data-mode-annotated=\"{total_all_versions_annotated:.1f}\" data-mode-explicit=\"{total_all_versions_explicit:.1f}\">{display_total_all:.1f}%</td>"
             else:
-                total_row += "<td>-</td>"
+                total_row += "<td data-mode-annotated=\"-\" data-mode-explicit=\"-\">-</td>"
         else:
-            total_row += "<td>-</td>"
+            total_row += "<td data-mode-annotated=\"-\" data-mode-explicit=\"-\">-</td>"
         
         total_row += "</tr>"
         rows += total_row
@@ -1566,7 +1642,7 @@ class SimpleVersionComparisonDashboard:
             'average_rating_by_method': average_rating_by_method
         }
     
-    def generate_dashboard_html(self, metrics: List[Dict], progression_data: Dict = None, rating_stats: Dict = None, progression_data_filtered: Dict = None, volume_data: Dict = None, volume_data_refrigerator: Dict = None, session_participant_map: Dict = None, volume_session_maps: Dict = None, progression_session_data: List[Dict] = None, progression_session_data_filtered: List[Dict] = None) -> str:
+    def generate_dashboard_html(self, metrics: List[Dict], progression_data: Dict = None, rating_stats: Dict = None, progression_data_filtered: Dict = None, volume_data: Dict = None, volume_data_refrigerator: Dict = None, session_participant_map: Dict = None, volume_session_maps: Dict = None, progression_session_data: List[Dict] = None, progression_session_data_filtered: List[Dict] = None, all_sessions: List[Dict] = None, all_messages_data: Dict = None) -> str:
         """Generate complete dashboard HTML"""
         # Generate summary table
         table_rows = ""
@@ -1697,7 +1773,55 @@ class SimpleVersionComparisonDashboard:
                             </tr>
             """
         
-        # Generate aggregated summary table (All Versions vs Refrigerator Only)
+        # Calculate metrics for not_refrigerator_example sessions
+        total_sessions_nr = 0
+        total_annotated_nr = 0
+        total_refrigerator_count_nr = 0
+        median_words_list_nr = []
+        ratings_list_nr = []
+        
+        if all_sessions and all_messages_data:
+            # Filter sessions with not_refrigerator_example tag
+            not_refrigerator_sessions = []
+            for session in all_sessions:
+                session_id = session.get('id')
+                messages = all_messages_data.get(session_id, [])
+                if not self.should_exclude_session(session, messages):
+                    if self.has_not_refrigerator_example_tag(session, messages):
+                        not_refrigerator_sessions.append(session)
+            
+            # Calculate metrics for not_refrigerator_example sessions
+            for session in not_refrigerator_sessions:
+                total_sessions_nr += 1
+                session_id = session.get('id')
+                messages = all_messages_data.get(session_id, [])
+                
+                # Check if annotated
+                if self.is_annotated_session(session, messages):
+                    total_annotated_nr += 1
+                    if self.has_refrigerator_example_tag(session, messages):
+                        total_refrigerator_count_nr += 1
+                
+                # Calculate median words
+                total_user_words = 0
+                for message in messages:
+                    if message.get('role') == 'user':
+                        content = message.get('content', '')
+                        total_user_words += len(content.split())
+                if total_user_words > 0:
+                    median_words_list_nr.append(total_user_words)
+                
+                # Calculate rating
+                rating = self.extract_session_rating(session, messages)
+                if rating is not None:
+                    ratings_list_nr.append(rating)
+        
+        # Calculate totals for not_refrigerator_example row
+        total_refrigerator_percent_nr = (total_refrigerator_count_nr / total_annotated_nr * 100) if total_annotated_nr > 0 else 0.0
+        total_median_words_nr = statistics.median(median_words_list_nr) if median_words_list_nr else 0.0
+        total_avg_rating_nr = statistics.mean(ratings_list_nr) if ratings_list_nr else 0.0
+        
+        # Generate aggregated summary table (All Versions vs Refrigerator Only vs Not Refrigerator)
         aggregated_summary_rows = f"""
                             <tr>
                                 <td><strong>All Versions</strong></td>
@@ -1714,6 +1838,14 @@ class SimpleVersionComparisonDashboard:
                                 <td>{total_refrigerator_percent_r:.1f}%</td>
                                 <td>{total_median_words_r:.1f}</td>
                                 <td>{total_avg_rating_r:.2f}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Not Refrigerator Example Sessions Only</strong></td>
+                                <td>{total_sessions_nr}</td>
+                                <td>{total_annotated_nr}</td>
+                                <td>{total_refrigerator_percent_nr:.1f}%</td>
+                                <td>{total_median_words_nr:.1f}</td>
+                                <td>{total_avg_rating_nr:.2f}</td>
                             </tr>
             """
         
@@ -1972,6 +2104,20 @@ class SimpleVersionComparisonDashboard:
                                         <h3>Refrigerator Example Rate by Method and Version</h3>
                                     </div>
                                     <div class="card-body">
+                                        <div class="mb-3">
+                                            <label class="form-label"><strong>Calculation Mode:</strong></label>
+                                            <div class="btn-group" role="group" aria-label="Calculation mode toggle">
+                                                <input type="radio" class="btn-check" name="refrigeratorCalcMode" id="calcModeAnnotated" value="annotated" checked onchange="updateRefrigeratorCalculationMode()">
+                                                <label class="btn btn-outline-primary" for="calcModeAnnotated">
+                                                    refrigerator_example / total annotated sessions
+                                                </label>
+                                                
+                                                <input type="radio" class="btn-check" name="refrigeratorCalcMode" id="calcModeExplicit" value="explicit" onchange="updateRefrigeratorCalculationMode()">
+                                                <label class="btn btn-outline-primary" for="calcModeExplicit">
+                                                    refrigerator_example / (refrigerator_example + not_refrigerator_example)
+                                                </label>
+                                            </div>
+                                        </div>
                                         <div class="table-responsive">
                                             <table class="table table-striped table-hover">
                                                 <thead class="table-dark">
@@ -2935,6 +3081,8 @@ class SimpleVersionComparisonDashboard:
             const refrigeratorRateTableBody = document.getElementById('refrigeratorRateTableBody');
             if (refrigeratorRateTableBody) {{
                 refrigeratorRateTableBody.innerHTML = refrigeratorOnly ? refrigeratorRateTableRowsRefrigerator : refrigeratorRateTableRows;
+                // Preserve the calculation mode after updating the table
+                updateRefrigeratorCalculationMode();
             }}
             
             // Update Average Rating table
@@ -2961,6 +3109,58 @@ class SimpleVersionComparisonDashboard:
                 updateMedianWordsTableWithData(metricsData);
                 updateMedianMessagesTableWithData(metricsData);
             }}
+        }}
+        
+        // Update refrigerator rate table based on calculation mode
+        function updateRefrigeratorCalculationMode() {{
+            const mode = document.querySelector('input[name="refrigeratorCalcMode"]:checked')?.value || 'annotated';
+            const tableBody = document.getElementById('refrigeratorRateTableBody');
+            
+            if (!tableBody) {{
+                console.warn('refrigeratorRateTableBody not found');
+                return;
+            }}
+            
+            // Get all table cells (td elements) - exclude the first column (method names)
+            const rows = tableBody.querySelectorAll('tr');
+            let cellsUpdated = 0;
+            
+            rows.forEach(row => {{
+                // Get all td elements except the first one (method name)
+                const cells = row.querySelectorAll('td:not(:first-child)');
+                
+                cells.forEach(cell => {{
+                    const annotatedValue = cell.getAttribute('data-mode-annotated');
+                    const explicitValue = cell.getAttribute('data-mode-explicit');
+                    
+                    // Skip if no data attributes
+                    if (!annotatedValue && !explicitValue) {{
+                        return;
+                    }}
+                    
+                    let displayValue;
+                    if (mode === 'annotated') {{
+                        displayValue = annotatedValue;
+                    }} else {{
+                        displayValue = explicitValue;
+                    }}
+                    
+                    // Update the cell content
+                    if (displayValue && displayValue !== '-') {{
+                        const numValue = parseFloat(displayValue);
+                        if (!isNaN(numValue)) {{
+                            cell.textContent = numValue.toFixed(1) + '%';
+                            cellsUpdated++;
+                        }} else {{
+                            cell.textContent = displayValue;
+                        }}
+                    }} else {{
+                        cell.textContent = '-';
+                    }}
+                }});
+            }});
+            
+            console.log('Updated ' + cellsUpdated + ' cells for mode: ' + mode);
         }}
         
         // Update tables for participant filter
@@ -3515,6 +3715,8 @@ class SimpleVersionComparisonDashboard:
             window.currentParticipantFilter = [];  // Initialize participant filter
             updateProgressionChart();
             updateVolumeChart();
+            // Initialize refrigerator calculation mode
+            updateRefrigeratorCalculationMode();
             updateTablesForRefrigeratorFilter();  // Initialize tables
             
             // Add event listeners for date inputs to auto-apply filters
@@ -3726,7 +3928,7 @@ class SimpleVersionComparisonDashboard:
                 session_participant_map[session_id] = participant_id
         
         # Generate HTML
-        html_content = self.generate_dashboard_html(metrics, progression_data, rating_stats, progression_data_filtered, volume_data, volume_data_refrigerator, session_participant_map, volume_session_maps, progression_session_data, progression_session_data_filtered)
+        html_content = self.generate_dashboard_html(metrics, progression_data, rating_stats, progression_data_filtered, volume_data, volume_data_refrigerator, session_participant_map, volume_session_maps, progression_session_data, progression_session_data_filtered, sessions, messages_data)
         
         # Save to file
         output_file = self.output_dir / "version_comparison_dashboard.html"

@@ -57,10 +57,10 @@ The dashboard expects data files in the following structure:
 
 ### Summary Tab
 - Summary metrics by version (sessions, annotations, ratings)
-- Summary Metrics - All Versions vs Refrigerator Examples table (aggregated comparison)
+- Summary Metrics - All Versions vs Refrigerator Examples table (aggregated comparison including "Not Refrigerator Example Sessions Only" row)
 
 ### Performance Tab  
-- Refrigerator example rate by method and version
+- Refrigerator example rate by method and version (with toggle to switch between calculation modes)
 - Average FLW score by method and version
 
 ### User Engagement Tab
