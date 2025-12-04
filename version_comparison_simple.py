@@ -11,9 +11,11 @@ import sys
 import json
 import re
 import webbrowser
+import csv
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Any, Optional
+from collections import defaultdict
 import statistics
 
 # Add parent directory to path to access constants.py
@@ -124,6 +126,74 @@ class SimpleVersionComparisonDashboard:
         
         print(f"Loaded messages for {len(filtered_messages)} sessions (filtered from {len(message_files)} total)")
         return filtered_messages
+    
+    def load_gs_visit_list(self) -> Dict[str, Dict]:
+        """Load GS visit list CSV and return dict mapping participant ID to GS visit data"""
+        gs_file = Path("../data/GS scores list.csv")
+        if not gs_file.exists():
+            print(f"Warning: {gs_file} not found")
+            return {}
+        
+        gs_data = {}
+        print(f"Loading GS visit list from {gs_file}")
+        
+        try:
+            with open(gs_file, 'r', encoding='utf-8-sig') as f:  # utf-8-sig handles BOM
+                reader = csv.DictReader(f)
+                for row in reader:
+                    participant_id = row.get('Participant ID', '').strip()
+                    if not participant_id:
+                        continue
+                    
+                    gs_date_str = row.get('GS visit Date', '').strip()
+                    gs_score_str = row.get('Score', '').strip()
+                    # Handle BOM in Group column name
+                    group = row.get('Group', row.get('\ufeffGroup', '')).strip()
+                    cohort = row.get('Cohort', '').strip()
+                    
+                    gs_date = None
+                    if gs_date_str:
+                        # Try multiple date formats
+                        date_formats = [
+                            '%m/%d/%y',      # 6/26/25
+                            '%m/%d/%Y',      # 6/26/2025
+                            '%d-%m-%Y',      # 13-5-2025
+                            '%d-%m-%y',      # 13-5-25
+                            '%d/%m/%Y',      # 13/5/2025
+                            '%d/%m/%y',      # 13/5/25
+                            '%Y-%m-%d',      # 2025-06-26
+                        ]
+                        
+                        for date_format in date_formats:
+                            try:
+                                gs_date = datetime.strptime(gs_date_str, date_format)
+                                break
+                            except ValueError:
+                                continue
+                        
+                        if gs_date is None:
+                            print(f"Warning: Could not parse GS date '{gs_date_str}' for participant {participant_id}")
+                    
+                    gs_score = None
+                    if gs_score_str:
+                        try:
+                            gs_score = int(gs_score_str)
+                        except ValueError:
+                            pass
+                    
+                    gs_data[participant_id] = {
+                        'date': gs_date,
+                        'date_str': gs_date_str,  # Keep original string format
+                        'score': gs_score,
+                        'group': group,
+                        'cohort': cohort
+                    }
+            
+            print(f"Loaded GS visit data for {len(gs_data)} participants")
+        except Exception as e:
+            print(f"Error loading GS visit list: {e}")
+        
+        return gs_data
     
     def matches_version(self, session: Dict, version_config: Dict, messages: List[Dict] = None) -> bool:
         """Check if session matches version criteria based on last message version tag"""
@@ -1524,6 +1594,519 @@ class SimpleVersionComparisonDashboard:
         
         return None
     
+    def extract_today_yesterday_preference(self, session: Dict, messages: List[Dict]) -> Optional[str]:
+        """Extract today/yesterday preference from messages"""
+        if not messages:
+            return None
+        
+        # Look for today/yesterday question in assistant messages (from end to start)
+        # Check all messages but prioritize the last ones (feedback questions typically at end)
+        question_found = False
+        question_message_index = -1
+        
+        # Check all messages, starting from the end
+        messages_to_check = list(reversed(messages))
+        
+        for idx, message in enumerate(messages_to_check):
+            if message.get('role') == 'assistant':
+                content = message.get('content', '').lower()
+                original_content = message.get('content', '')
+                
+                # Check for today/yesterday question patterns - more flexible
+                # Look for "today" and ("yesterday" OR "last one"/"your last one") in the same message
+                has_today = 'today' in content or "today's" in content
+                has_yesterday = 'yesterday' in content or "yesterday's" in content
+                has_last_one = 'last one' in content or 'your last one' in content or 'your last' in content
+                
+                if has_today and (has_yesterday or has_last_one):
+                    # Exclude system prompts/instructions (usually very long or contain "Guide a conversation")
+                    if len(original_content) > 1000 or 'guide a conversation' in content:
+                        continue
+                    
+                    # Check if it's asking a question - be more lenient
+                    # If it contains both today and yesterday, and has question indicators OR ends with ?
+                    question_indicators = [
+                        'which', 'what', 'do you', 'did you', 'would you', 
+                        'prefer', 'find', 'useful', 'better', 'question'
+                    ]
+                    has_question_marker = any(indicator in content for indicator in question_indicators)
+                    ends_with_question = original_content.strip().endswith('?')
+                    
+                    if has_question_marker or ends_with_question:
+                        question_found = True
+                        # Calculate actual index in full messages list
+                        question_message_index = len(messages) - 1 - idx
+                        break
+        
+        if not question_found:
+            return None
+        
+        # Look for user responses (from end to start, after the question)
+        # Check first 5 user messages after the question
+        user_messages_checked = 0
+        for message in messages[question_message_index + 1:]:
+            if message.get('role') == 'user':
+                user_messages_checked += 1
+                if user_messages_checked > 5:  # Check first 5 user responses
+                    break
+                
+                content = message.get('content', '').strip().lower()
+                original_content = message.get('content', '').strip()
+                
+                # Skip very long responses (> 500 chars) - likely just explanations
+                if len(original_content) > 500:
+                    continue
+                
+                # Check for "both" response first - valid answer
+                if re.search(r'^\s*both\s*$', content) or (re.search(r'\bboth\b', content) and len(original_content) < 15):
+                    return 'both'
+                
+                # Simple detection: if response contains "today" (and not "yesterday"/"last"), it's "today"
+                # If response contains "yesterday" or "last" (and not "today"), it's "yesterday"
+                has_today = re.search(r'\btoday\'?s?\b', content)
+                has_yesterday = re.search(r'\byesterday\'?s?\b', content)
+                has_last = (re.search(r'\blast\s+(one|session)?\b', content) or 
+                           'your last' in content or 
+                           'the last' in content or
+                           re.search(r'\bprevious\b', content))
+                
+                # "today" response (not yesterday or last)
+                if has_today and not has_yesterday and not has_last:
+                    return 'today'
+                
+                # "yesterday" or "last" response (not today)
+                if (has_yesterday or has_last) and not has_today:
+                    return 'yesterday'
+        
+        return None
+    
+    def calculate_today_yesterday_tendency_by_version_and_method(self, sessions: List[Dict], messages_data: Dict) -> Dict:
+        """Calculate today/yesterday preference tendency by version and method"""
+        methods = ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown']
+        
+        # Structure: {version: {method: {'today': count, 'yesterday': count, 'both': count, 'total': count}}}
+        tendency_data = defaultdict(lambda: defaultdict(lambda: {'today': 0, 'yesterday': 0, 'both': 0, 'total': 0}))
+        
+        # Also track statistics
+        stats = defaultdict(lambda: defaultdict(lambda: {
+            'sessions_with_question': 0,
+            'sessions_with_response': 0
+        }))
+        
+        for session in sessions:
+            session_id = session.get('id')
+            if not session_id:
+                continue
+            
+            messages = messages_data.get(session_id, [])
+            
+            # Skip split sessions and test sessions
+            if self.should_exclude_session(session, messages):
+                continue
+            
+            # Determine version
+            version = None
+            for version_name, version_config in self.coaching_bot_versions.items():
+                if self.matches_version(session, version_config, messages):
+                    if 'Control' in version_name:
+                        version = 'Control bot'
+                    elif 'V3' in version_name:
+                        version = 'Coaching bot V3'
+                    elif 'V4' in version_name:
+                        version = 'Coaching bot V4'
+                    elif 'V5' in version_name:
+                        version = 'Coaching bot V5'
+                    elif 'V6' in version_name:
+                        version = 'Coaching bot V6'
+                    break
+            
+            if not version:
+                continue
+            
+            # Determine coaching method
+            method = self.detect_coaching_method(session, messages)
+            
+            # Check if question was asked - look for today/yesterday or today/last one question
+            question_found = False
+            for message in reversed(messages):
+                if message.get('role') == 'assistant':
+                    content = message.get('content', '').lower()
+                    original_content = message.get('content', '')
+                    
+                    # Exclude system prompts
+                    if len(original_content) > 1000 or 'guide a conversation' in content:
+                        continue
+                    
+                    # Look for today with yesterday or last one
+                    has_today = 'today' in content or "today's" in content
+                    has_yesterday = 'yesterday' in content or "yesterday's" in content
+                    has_last_one = 'last one' in content or 'your last' in content
+                    
+                    if has_today and (has_yesterday or has_last_one):
+                        question_indicators = [
+                            'which', 'what', 'do you', 'did you', 'would you', 
+                            'prefer', 'find', 'useful', 'better', 'question', 'most useful'
+                        ]
+                        has_question_marker = any(indicator in content for indicator in question_indicators)
+                        ends_with_question = original_content.strip().endswith('?')
+                        
+                        if has_question_marker or ends_with_question:
+                            question_found = True
+                            break
+            
+            if question_found:
+                stats[version][method]['sessions_with_question'] += 1
+                
+                # Extract preference
+                preference = self.extract_today_yesterday_preference(session, messages)
+                if preference:
+                    tendency_data[version][method][preference] += 1
+                    tendency_data[version][method]['total'] += 1
+                    stats[version][method]['sessions_with_response'] += 1
+        
+        # Calculate tendency (more today = 'today', more yesterday = 'yesterday', tie = 'tie')
+        # Note: 'both' responses are counted in total but don't affect tendency calculation
+        result = {}
+        for version, method_data in tendency_data.items():
+            result[version] = {}
+            for method, counts in method_data.items():
+                today_count = counts['today']
+                yesterday_count = counts['yesterday']
+                both_count = counts.get('both', 0)
+                total = counts['total']
+                
+                # Tendency is calculated only from today vs yesterday (both is excluded from tendency)
+                preference_total = today_count + yesterday_count
+                
+                if preference_total == 0:
+                    tendency = None
+                elif today_count > yesterday_count:
+                    tendency = 'today'
+                elif yesterday_count > today_count:
+                    tendency = 'yesterday'
+                else:
+                    tendency = 'tie'
+                
+                result[version][method] = {
+                    'tendency': tendency,
+                    'today_count': today_count,
+                    'yesterday_count': yesterday_count,
+                    'both_count': both_count,
+                    'total': total
+                }
+        
+        # Add statistics
+        result['_stats'] = dict(stats)
+        
+        return dict(result)
+    
+    def generate_today_yesterday_table_rows(self, tendency_data: Dict, metrics: List[Dict]) -> str:
+        """Generate HTML rows for today/yesterday tendency table"""
+        if not tendency_data or '_stats' not in tendency_data:
+            return "<tr><td colspan='6' class='text-center'>No data available</td></tr>"
+        
+        methods = ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown']
+        stats = tendency_data.get('_stats', {})
+        
+        rows = ""
+        
+        for method in methods:
+            row = f"<tr><td><strong>{method}</strong></td>"
+            
+            for metric in metrics:
+                version_name = metric['version_name']
+                method_data = tendency_data.get(version_name, {}).get(method, {})
+                tendency = method_data.get('tendency')
+                
+                if tendency is None:
+                    row += "<td>-</td>"
+                elif tendency == 'today':
+                    row += '<td style="text-align: center;"><span style="color: green; font-size: 1.5em;">→</span></td>'
+                elif tendency == 'yesterday':
+                    row += '<td style="text-align: center;"><span style="color: red; font-size: 1.5em;">←</span></td>'
+                else:  # tie
+                    row += '<td style="text-align: center;"><span style="color: orange; font-size: 1.5em;">↔</span></td>'
+            
+            # Calculate "All Versions" tendency
+            all_versions_today = 0
+            all_versions_yesterday = 0
+            for metric in metrics:
+                version_name = metric['version_name']
+                method_data = tendency_data.get(version_name, {}).get(method, {})
+                all_versions_today += method_data.get('today_count', 0)
+                all_versions_yesterday += method_data.get('yesterday_count', 0)
+            
+            if all_versions_today + all_versions_yesterday == 0:
+                row += "<td>-</td>"
+            elif all_versions_today > all_versions_yesterday:
+                row += '<td style="text-align: center; font-weight: bold;"><span style="color: green; font-size: 1.5em;">→</span></td>'
+            elif all_versions_yesterday > all_versions_today:
+                row += '<td style="text-align: center; font-weight: bold;"><span style="color: red; font-size: 1.5em;">←</span></td>'
+            else:
+                row += '<td style="text-align: center; font-weight: bold;"><span style="color: orange; font-size: 1.5em;">↔</span></td>'
+            
+            row += "</tr>"
+            rows += row
+        
+        # Add Total row
+        total_row = "<tr style='background-color: #f8f9fa;'><td><strong>Total (All Methods)</strong></td>"
+        
+        for metric in metrics:
+            version_name = metric['version_name']
+            total_today = 0
+            total_yesterday = 0
+            
+            for method in methods:
+                method_data = tendency_data.get(version_name, {}).get(method, {})
+                total_today += method_data.get('today_count', 0)
+                total_yesterday += method_data.get('yesterday_count', 0)
+            
+            if total_today + total_yesterday == 0:
+                total_row += "<td>-</td>"
+            elif total_today > total_yesterday:
+                total_row += '<td style="text-align: center; font-weight: bold;"><span style="color: green; font-size: 1.5em;">→</span></td>'
+            elif total_yesterday > total_today:
+                total_row += '<td style="text-align: center; font-weight: bold;"><span style="color: red; font-size: 1.5em;">←</span></td>'
+            else:
+                total_row += '<td style="text-align: center; font-weight: bold;"><span style="color: orange; font-size: 1.5em;">↔</span></td>'
+        
+        # All Versions total
+        all_versions_total_today = 0
+        all_versions_total_yesterday = 0
+        for metric in metrics:
+            version_name = metric['version_name']
+            for method in methods:
+                method_data = tendency_data.get(version_name, {}).get(method, {})
+                all_versions_total_today += method_data.get('today_count', 0)
+                all_versions_total_yesterday += method_data.get('yesterday_count', 0)
+        
+        if all_versions_total_today + all_versions_total_yesterday == 0:
+            total_row += "<td>-</td>"
+        elif all_versions_total_today > all_versions_total_yesterday:
+            total_row += '<td style="text-align: center; font-weight: bold;"><span style="color: green; font-size: 1.5em;">→</span></td>'
+        elif all_versions_total_yesterday > all_versions_total_today:
+            total_row += '<td style="text-align: center; font-weight: bold;"><span style="color: red; font-size: 1.5em;">←</span></td>'
+        else:
+            total_row += '<td style="text-align: center; font-weight: bold;"><span style="color: orange; font-size: 1.5em;">↔</span></td>'
+        
+        total_row += "</tr>"
+        rows += total_row
+        
+        return rows
+    
+    def generate_today_yesterday_statistics(self, tendency_data: Dict, metrics: List[Dict]) -> str:
+        """Generate statistics for today/yesterday preference collection"""
+        if not tendency_data or '_stats' not in tendency_data:
+            return ""
+        
+        stats = tendency_data.get('_stats', {})
+        methods = ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown']
+        
+        # Calculate overall statistics
+        total_sessions_with_question = 0
+        total_sessions_with_response = 0
+        
+        for metric in metrics:
+            version_name = metric['version_name']
+            version_stats = stats.get(version_name, {})
+            for method in methods:
+                method_stats = version_stats.get(method, {})
+                total_sessions_with_question += method_stats.get('sessions_with_question', 0)
+                total_sessions_with_response += method_stats.get('sessions_with_response', 0)
+        
+        response_percentage = (total_sessions_with_response / total_sessions_with_question * 100) if total_sessions_with_question > 0 else 0
+        
+        # Calculate today, yesterday, and "both" responses counts
+        total_today_responses = 0
+        total_yesterday_responses = 0
+        total_both_responses = 0
+        for metric in metrics:
+            version_name = metric['version_name']
+            version_data = tendency_data.get(version_name, {})
+            for method in methods:
+                method_data = version_data.get(method, {})
+                total_today_responses += method_data.get('today_count', 0)
+                total_yesterday_responses += method_data.get('yesterday_count', 0)
+                total_both_responses += method_data.get('both_count', 0)
+        
+        stats_text = f"""
+        <div class="mt-3">
+            <small class="text-muted">
+                <strong>Today/Yesterday Preference Collection Statistics:</strong><br>
+                • Today/Yesterday Questions: {total_sessions_with_question} sessions contain today/yesterday preference questions<br>
+                • Valid Responses: {total_sessions_with_response} sessions ({response_percentage:.1f}% of sessions with question) have extractable preferences<br>
+                &nbsp;&nbsp;&nbsp;&nbsp;- "Today" Responses: {total_today_responses} sessions<br>
+                &nbsp;&nbsp;&nbsp;&nbsp;- "Yesterday/Last One" Responses: {total_yesterday_responses} sessions<br>
+                • "Both" Responses: {total_both_responses} sessions indicated both sessions were equally useful (not included in tendency calculation)
+            </small>
+        </div>
+        """
+        
+        return stats_text
+    
+    def calculate_average_rating_by_preference(self, sessions: List[Dict], messages_data: Dict, preference: str) -> Dict:
+        """Calculate average session rating for sessions where user responded 'today' or 'yesterday'"""
+        methods = ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown']
+        
+        # Structure: {version: {method: {'ratings': [list], 'count': count, 'average': float}}}
+        rating_data = defaultdict(lambda: defaultdict(lambda: {'ratings': [], 'count': 0, 'average': None}))
+        
+        for session in sessions:
+            session_id = session.get('id')
+            if not session_id:
+                continue
+            
+            messages = messages_data.get(session_id, [])
+            
+            # Skip split sessions and test sessions
+            if self.should_exclude_session(session, messages):
+                continue
+            
+            # Extract preference
+            session_preference = self.extract_today_yesterday_preference(session, messages)
+            if session_preference != preference:
+                continue
+            
+            # Extract rating
+            rating = self.extract_session_rating(session, messages)
+            if rating is None:
+                continue
+            
+            # Determine version
+            version = None
+            for version_name, version_config in self.coaching_bot_versions.items():
+                if self.matches_version(session, version_config, messages):
+                    if 'Control' in version_name:
+                        version = 'Control bot'
+                    elif 'V3' in version_name:
+                        version = 'Coaching bot V3'
+                    elif 'V4' in version_name:
+                        version = 'Coaching bot V4'
+                    elif 'V5' in version_name:
+                        version = 'Coaching bot V5'
+                    elif 'V6' in version_name:
+                        version = 'Coaching bot V6'
+                    break
+            
+            if not version:
+                continue
+            
+            # Determine coaching method
+            method = self.detect_coaching_method(session, messages)
+            
+            # Add rating
+            rating_data[version][method]['ratings'].append(rating)
+            rating_data[version][method]['count'] += 1
+        
+        # Calculate averages
+        result = {}
+        for version, method_data in rating_data.items():
+            result[version] = {}
+            for method, data in method_data.items():
+                ratings = data['ratings']
+                if ratings:
+                    result[version][method] = {
+                        'average': sum(ratings) / len(ratings),
+                        'count': len(ratings)
+                    }
+                else:
+                    result[version][method] = {
+                        'average': None,
+                        'count': 0
+                    }
+        
+        return dict(result)
+    
+    def generate_average_rating_table_rows(self, rating_data: Dict, metrics: List[Dict], preference_label: str) -> str:
+        """Generate HTML rows for average rating table by preference"""
+        if not rating_data:
+            return "<tr><td colspan='6' class='text-center'>No data available</td></tr>"
+        
+        methods = ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown']
+        rows = ""
+        
+        for method in methods:
+            row = f"<tr><td><strong>{method}</strong></td>"
+            
+            for metric in metrics:
+                version_name = metric['version_name']
+                method_data = rating_data.get(version_name, {}).get(method, {})
+                average = method_data.get('average')
+                count = method_data.get('count', 0)
+                
+                if average is None or count == 0:
+                    row += "<td>-</td>"
+                else:
+                    row += f"<td style='text-align: center;'>{average:.2f} <small class='text-muted'>(n={count})</small></td>"
+            
+            # Calculate "All Versions" average
+            all_versions_ratings = []
+            all_versions_count = 0
+            for metric in metrics:
+                version_name = metric['version_name']
+                method_data = rating_data.get(version_name, {}).get(method, {})
+                count = method_data.get('count', 0)
+                average = method_data.get('average')
+                if average is not None and count > 0:
+                    # Weight by count for overall average
+                    all_versions_ratings.extend([average] * count)
+                    all_versions_count += count
+            
+            if all_versions_count == 0:
+                row += "<td>-</td>"
+            else:
+                overall_avg = sum(all_versions_ratings) / len(all_versions_ratings) if all_versions_ratings else None
+                row += f"<td style='text-align: center; font-weight: bold;'>{overall_avg:.2f} <small class='text-muted'>(n={all_versions_count})</small></td>"
+            
+            row += "</tr>"
+            rows += row
+        
+        # Add Total row
+        total_row = "<tr style='background-color: #f8f9fa;'><td><strong>Total (All Methods)</strong></td>"
+        
+        for metric in metrics:
+            version_name = metric['version_name']
+            total_ratings = []
+            total_count = 0
+            
+            for method in methods:
+                method_data = rating_data.get(version_name, {}).get(method, {})
+                count = method_data.get('count', 0)
+                average = method_data.get('average')
+                if average is not None and count > 0:
+                    total_ratings.extend([average] * count)
+                    total_count += count
+            
+            if total_count == 0:
+                total_row += "<td>-</td>"
+            else:
+                overall_avg = sum(total_ratings) / len(total_ratings) if total_ratings else None
+                total_row += f"<td style='text-align: center; font-weight: bold;'>{overall_avg:.2f} <small class='text-muted'>(n={total_count})</small></td>"
+        
+        # All Versions total
+        all_versions_total_ratings = []
+        all_versions_total_count = 0
+        for metric in metrics:
+            version_name = metric['version_name']
+            for method in methods:
+                method_data = rating_data.get(version_name, {}).get(method, {})
+                count = method_data.get('count', 0)
+                average = method_data.get('average')
+                if average is not None and count > 0:
+                    all_versions_total_ratings.extend([average] * count)
+                    all_versions_total_count += count
+        
+        if all_versions_total_count == 0:
+            total_row += "<td>-</td>"
+        else:
+            overall_avg = sum(all_versions_total_ratings) / len(all_versions_total_ratings) if all_versions_total_ratings else None
+            total_row += f"<td style='text-align: center; font-weight: bold;'>{overall_avg:.2f} <small class='text-muted'>(n={all_versions_total_count})</small></td>"
+        
+        total_row += "</tr>"
+        rows += total_row
+        
+        return rows
+    
     def calculate_rating_statistics(self, sessions: List[Dict], messages_data: Dict) -> Dict:
         """Calculate comprehensive rating statistics"""
         # Filter out split sessions and test sessions
@@ -1642,7 +2225,637 @@ class SimpleVersionComparisonDashboard:
             'average_rating_by_method': average_rating_by_method
         }
     
-    def generate_dashboard_html(self, metrics: List[Dict], progression_data: Dict = None, rating_stats: Dict = None, progression_data_filtered: Dict = None, volume_data: Dict = None, volume_data_refrigerator: Dict = None, session_participant_map: Dict = None, volume_session_maps: Dict = None, progression_session_data: List[Dict] = None, progression_session_data_filtered: List[Dict] = None, all_sessions: List[Dict] = None, all_messages_data: Dict = None) -> str:
+    def calculate_flw_breakdown_by_gs_tiers(self, gs_data: Dict[str, Dict]) -> Dict:
+        """Calculate FLW count breakdown by cohort, group, and GS score tiers"""
+        # Structure: {cohort: {group: {tier: count}}}
+        breakdown = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
+        
+        for participant_id, gs_info in gs_data.items():
+            cohort = gs_info.get('cohort', '').strip()
+            group_raw = gs_info.get('group', '').strip()
+            score = gs_info.get('score')
+            
+            # Skip if missing essential data
+            if not cohort or not group_raw or score is None:
+                continue
+            
+            # Map group: A = Control, B = Coached
+            if group_raw.upper() == 'A':
+                group = 'Control'
+            elif group_raw.upper() == 'B':
+                group = 'Coached'
+            else:
+                # Try to match other variations
+                group_lower = group_raw.lower()
+                if 'control' in group_lower or group_lower == 'a':
+                    group = 'Control'
+                elif 'coach' in group_lower or group_lower == 'b':
+                    group = 'Coached'
+                else:
+                    continue  # Skip unknown groups
+            
+            # Determine GS score tier
+            if 0 <= score <= 50:
+                tier = '0-50'
+            elif 50 < score <= 80:
+                tier = '50-80'
+            elif score > 80:
+                tier = '>80'
+            else:
+                continue  # Skip invalid scores
+            
+            breakdown[cohort][group][tier] += 1
+        
+        return dict(breakdown)
+    
+    def calculate_avg_gs_by_version_and_method(self, sessions: List[Dict], messages_data: Dict, gs_data: Dict[str, Dict]) -> Dict:
+        """Calculate average GS score by bot version and coaching method"""
+        # Structure: {version: {method: [list of GS scores]}}
+        version_method_scores = defaultdict(lambda: defaultdict(list))
+        
+        # Create case-insensitive lookup for GS data
+        gs_data_lower = {}
+        for pid, info in gs_data.items():
+            gs_data_lower[pid.lower()] = info
+        
+        # Group sessions by participant
+        participant_sessions = defaultdict(list)
+        for session in sessions:
+            participant_id = session.get('participant', {}).get('identifier', '')
+            if not participant_id:
+                continue
+            
+            # Skip test sessions
+            if participant_id.endswith('@dimagi.com'):
+                continue
+            
+            session_id = session.get('id')
+            if not session_id:
+                continue
+            
+            messages = messages_data.get(session_id, [])
+            
+            # Skip split sessions and test sessions
+            if self.should_exclude_session(session, messages):
+                continue
+            
+            participant_sessions[participant_id].append((session, messages))
+        
+        # For each participant with GS score, determine their version/method usage
+        for participant_id, session_list in participant_sessions.items():
+            # Get GS score (try exact match first, then case-insensitive)
+            gs_info = gs_data.get(participant_id) or gs_data_lower.get(participant_id.lower())
+            if not gs_info or gs_info.get('score') is None:
+                continue
+            
+            gs_score = gs_info['score']
+            
+            # Track which version/method combinations this participant used
+            participant_combinations = set()
+            
+            for session, messages in session_list:
+                # Determine version
+                version = None
+                for version_name, version_config in self.coaching_bot_versions.items():
+                    if self.matches_version(session, version_config, messages):
+                        if 'Control' in version_name:
+                            version = 'Control bot'
+                        elif 'V3' in version_name:
+                            version = 'Coaching bot V3'
+                        elif 'V4' in version_name:
+                            version = 'Coaching bot V4'
+                        elif 'V5' in version_name:
+                            version = 'Coaching bot V5'
+                        elif 'V6' in version_name:
+                            version = 'Coaching bot V6'
+                        break
+                
+                if not version:
+                    continue
+                
+                # Determine coaching method
+                method = self.detect_coaching_method(session, messages)
+                
+                # Add to combination set (to avoid double-counting same participant)
+                combination = (version, method)
+                if combination not in participant_combinations:
+                    participant_combinations.add(combination)
+                    version_method_scores[version][method].append(gs_score)
+        
+        # Calculate averages
+        avg_scores = {}
+        for version, method_scores in version_method_scores.items():
+            avg_scores[version] = {}
+            for method, scores in method_scores.items():
+                if scores:
+                    avg_scores[version][method] = statistics.mean(scores)
+                else:
+                    avg_scores[version][method] = 0.0
+        
+        return avg_scores
+    
+    def has_tag(self, session: Dict, messages: List[Dict], tag: str) -> bool:
+        """Check if session or any message has the specified tag"""
+        # Check session tags
+        if tag in session.get('tags', []):
+            return True
+        
+        # Check message tags
+        if messages:
+            for message in messages:
+                if tag in message.get('tags', []):
+                    return True
+        
+        return False
+    
+    def is_tagged_session(self, session: Dict, messages: List[Dict] = None) -> bool:
+        """Check if session is a tagged session (has non-version and non-method tags)"""
+        # Collect all tags from session and messages
+        all_tags = set(session.get('tags', []))
+        
+        if messages:
+            for message in messages:
+                all_tags.update(message.get('tags', []))
+        
+        # Filter out version tags and method tags
+        non_version_method_tags = [
+            tag for tag in all_tags 
+            if not self.is_version_tag(tag) and not self.is_coaching_method_tag(tag)
+        ]
+        
+        return len(non_version_method_tags) > 0
+    
+    def calculate_tag_counts_by_version_and_method(self, sessions: List[Dict], messages_data: Dict) -> Dict:
+        """Calculate tag counts by version and method"""
+        # Define all tags to track
+        tags_to_track = [
+            'safe', 'unsafe', 'acceptable', 'unacceptable',
+            'refrigerator_example', 'not_refrigerator_example',
+            'bot_performance_good', 'bot_performance_bad',
+            'coaching_good', 'coaching_undetermined', 'coaching_bad',
+            'engagement_good', 'engagement_bad',
+            'user_knowledge_good', 'user_knowledge_bad',
+            'user_ai_response'
+        ]
+        
+        methods = ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown']
+        
+        # Structure: {version: {tag: {method: count, 'total': count}}}
+        tag_counts = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
+        
+        # Track unique tagged sessions by version and method
+        # Structure: {version: {method: set of session_ids}}
+        tagged_sessions_by_version_method = defaultdict(lambda: defaultdict(set))
+        
+        # Also track overall counts (all versions combined)
+        overall_counts = defaultdict(lambda: defaultdict(int))  # {tag: {method: count}}
+        overall_totals = defaultdict(int)  # {tag: total_count}
+        
+        for session in sessions:
+            session_id = session.get('id')
+            if not session_id:
+                continue
+            
+            messages = messages_data.get(session_id, [])
+            
+            # Skip split sessions and test sessions
+            if self.should_exclude_session(session, messages):
+                continue
+            
+            # Only count tagged sessions
+            if not self.is_tagged_session(session, messages):
+                continue
+            
+            # Determine version
+            version = None
+            for version_name, version_config in self.coaching_bot_versions.items():
+                if self.matches_version(session, version_config, messages):
+                    if 'Control' in version_name:
+                        version = 'Control bot'
+                    elif 'V3' in version_name:
+                        version = 'Coaching bot V3'
+                    elif 'V4' in version_name:
+                        version = 'Coaching bot V4'
+                    elif 'V5' in version_name:
+                        version = 'Coaching bot V5'
+                    elif 'V6' in version_name:
+                        version = 'Coaching bot V6'
+                    break
+            
+            if not version:
+                continue
+            
+            # Determine coaching method
+            method = self.detect_coaching_method(session, messages)
+            
+            # Track this session as a tagged session
+            tagged_sessions_by_version_method[version][method].add(session_id)
+            
+            # Check each tag
+            for tag in tags_to_track:
+                if self.has_tag(session, messages, tag):
+                    # Count for this version/method combination
+                    tag_counts[version][tag][method] += 1
+                    tag_counts[version][tag]['total'] += 1
+                    
+                    # Count for overall (all versions)
+                    overall_counts[tag][method] += 1
+                    overall_totals[tag] += 1
+        
+        # Add overall counts to the structure
+        tag_counts['All Versions'] = {}
+        for tag in tags_to_track:
+            tag_counts['All Versions'][tag] = dict(overall_counts[tag])
+            tag_counts['All Versions'][tag]['total'] = overall_totals[tag]
+        
+        # Add tagged session counts to the structure
+        for version in tagged_sessions_by_version_method:
+            if version not in tag_counts:
+                tag_counts[version] = {}
+            tag_counts[version]['_tagged_sessions'] = {}
+            for method in methods:
+                tag_counts[version]['_tagged_sessions'][method] = len(tagged_sessions_by_version_method[version].get(method, set()))
+            # Total tagged sessions for this version
+            all_sessions_for_version = set()
+            for method_sessions in tagged_sessions_by_version_method[version].values():
+                all_sessions_for_version.update(method_sessions)
+            tag_counts[version]['_tagged_sessions']['total'] = len(all_sessions_for_version)
+        
+        return dict(tag_counts)
+    
+    def prepare_tag_combination_data(self, sessions: List[Dict], messages_data: Dict) -> Dict:
+        """Prepare data structure for tag combination calculations"""
+        tags_to_track = [
+            'safe', 'unsafe', 'acceptable', 'unacceptable',
+            'refrigerator_example', 'not_refrigerator_example',
+            'bot_performance_good', 'bot_performance_bad',
+            'coaching_good', 'coaching_undetermined', 'coaching_bad',
+            'engagement_good', 'engagement_bad',
+            'user_knowledge_good', 'user_knowledge_bad',
+            'user_ai_response'
+        ]
+        
+        # Structure: {version: {method: {session_id: [list of tags]}}}
+        session_tags_by_version_method = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
+        
+        # Also track total tagged sessions per version/method
+        tagged_sessions_by_version_method = defaultdict(lambda: defaultdict(int))
+        
+        for session in sessions:
+            session_id = session.get('id')
+            if not session_id:
+                continue
+            
+            messages = messages_data.get(session_id, [])
+            
+            # Skip split sessions and test sessions
+            if self.should_exclude_session(session, messages):
+                continue
+            
+            # Only count tagged sessions
+            if not self.is_tagged_session(session, messages):
+                continue
+            
+            # Determine version
+            version = None
+            for version_name, version_config in self.coaching_bot_versions.items():
+                if self.matches_version(session, version_config, messages):
+                    if 'Control' in version_name:
+                        version = 'Control bot'
+                    elif 'V3' in version_name:
+                        version = 'Coaching bot V3'
+                    elif 'V4' in version_name:
+                        version = 'Coaching bot V4'
+                    elif 'V5' in version_name:
+                        version = 'Coaching bot V5'
+                    elif 'V6' in version_name:
+                        version = 'Coaching bot V6'
+                    break
+            
+            if not version:
+                continue
+            
+            # Determine coaching method
+            method = self.detect_coaching_method(session, messages)
+            
+            # Collect tags for this session
+            session_tags = []
+            for tag in tags_to_track:
+                if self.has_tag(session, messages, tag):
+                    session_tags.append(tag)
+            
+            if session_tags:
+                session_tags_by_version_method[version][method][session_id] = session_tags
+                tagged_sessions_by_version_method[version][method] += 1
+        
+        # Convert to a format suitable for JSON
+        result = {}
+        for version, method_data in session_tags_by_version_method.items():
+            result[version] = {}
+            for method, sessions_data in method_data.items():
+                result[version][method] = {
+                    'sessions': dict(sessions_data),
+                    'total_tagged': tagged_sessions_by_version_method[version].get(method, 0)
+                }
+        
+        return dict(result)
+    
+    def generate_tag_table_rows(self, tag_counts: Dict, metrics: List[Dict], selected_versions: List[str] = None, selected_tags: List[str] = None) -> str:
+        """Generate HTML rows for tag counts table with count and percentage columns"""
+        if not tag_counts:
+            return "<tr><td colspan='14' class='text-center'>No tag data available</td></tr>"
+        
+        tags_to_track = [
+            'safe', 'unsafe', 'acceptable', 'unacceptable',
+            'refrigerator_example', 'not_refrigerator_example',
+            'bot_performance_good', 'bot_performance_bad',
+            'coaching_good', 'coaching_undetermined', 'coaching_bad',
+            'engagement_good', 'engagement_bad',
+            'user_knowledge_good', 'user_knowledge_bad',
+            'user_ai_response'
+        ]
+        
+        # Filter tags if specified
+        if selected_tags is None:
+            tags_to_show = tags_to_track
+        else:
+            tags_to_show = [tag for tag in tags_to_track if tag in selected_tags]
+        
+        methods = ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown']
+        
+        # Filter versions if specified
+        if selected_versions is None:
+            # Default: all versions
+            version_names = [m['version_name'] for m in metrics]
+        else:
+            version_names = [v for v in selected_versions if v in tag_counts]
+        
+        rows = ""
+        
+        # Calculate total tagged sessions per method across selected versions
+        total_tagged_by_method = defaultdict(int)
+        for version in version_names:
+            if version in tag_counts and '_tagged_sessions' in tag_counts[version]:
+                for method in methods:
+                    total_tagged_by_method[method] += tag_counts[version]['_tagged_sessions'].get(method, 0)
+        
+        # Calculate total tagged sessions across all selected versions
+        total_tagged_sessions = sum(total_tagged_by_method.values())
+        
+        # Generate rows for each tag
+        for tag in tags_to_show:
+            row = f"<tr><td><strong>{tag}</strong></td>"
+            
+            # Total count across all selected versions
+            total_count = 0
+            for version in version_names:
+                if version in tag_counts and tag in tag_counts[version]:
+                    total_count += tag_counts[version][tag].get('total', 0)
+            
+            # Total percentage
+            total_percentage = (total_count / total_tagged_sessions * 100) if total_tagged_sessions > 0 else 0
+            row += f"<td>{total_count}</td><td>{total_percentage:.1f}%</td>"
+            
+            # Count by method (aggregated across selected versions)
+            method_totals = defaultdict(int)
+            for version in version_names:
+                if version in tag_counts and tag in tag_counts[version]:
+                    for method in methods:
+                        method_totals[method] += tag_counts[version][tag].get(method, 0)
+            
+            for method in methods:
+                count = method_totals[method]
+                # Percentage: count for this method / total count for this tag
+                percentage = (count / total_count * 100) if total_count > 0 else 0
+                row += f"<td>{count}</td><td>{percentage:.1f}%</td>"
+            
+            row += "</tr>"
+            rows += row
+        
+        # Add Total row
+        total_row = "<tr><td><strong>Total</strong></td>"
+        total_row += f"<td><strong>{total_tagged_sessions}</strong></td><td><strong>100.0%</strong></td>"
+        
+        # Total by method - sum across selected versions
+        total_by_method = defaultdict(int)
+        for version in version_names:
+            if version in tag_counts and '_tagged_sessions' in tag_counts[version]:
+                for method in methods:
+                    method_count = tag_counts[version]['_tagged_sessions'].get(method, 0)
+                    total_by_method[method] += method_count
+        
+        for method in methods:
+            count = total_by_method[method]
+            percentage = (count / total_tagged_sessions * 100) if total_tagged_sessions > 0 else 0
+            total_row += f"<td><strong>{count}</strong></td><td><strong>{percentage:.1f}%</strong></td>"
+        
+        total_row += "</tr>"
+        rows += total_row
+        
+        return rows
+    
+    def calculate_tag_combination_counts(self, sessions: List[Dict], messages_data: Dict, selected_tags: List[str]) -> Dict:
+        """Calculate session counts for tag combinations by version and method"""
+        if not selected_tags:
+            return {}
+        
+        methods = ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown']
+        
+        # Structure: {version: {method: count}}
+        combination_counts = defaultdict(lambda: defaultdict(int))
+        tagged_sessions_by_version_method = defaultdict(lambda: defaultdict(int))
+        
+        for session in sessions:
+            session_id = session.get('id')
+            if not session_id:
+                continue
+            
+            messages = messages_data.get(session_id, [])
+            
+            # Skip split sessions and test sessions
+            if self.should_exclude_session(session, messages):
+                continue
+            
+            # Only count tagged sessions
+            if not self.is_tagged_session(session, messages):
+                continue
+            
+            # Check if session has ALL selected tags
+            has_all_tags = True
+            for tag in selected_tags:
+                if not self.has_tag(session, messages, tag):
+                    has_all_tags = False
+                    break
+            
+            if not has_all_tags:
+                continue
+            
+            # Determine version
+            version = None
+            for version_name, version_config in self.coaching_bot_versions.items():
+                if self.matches_version(session, version_config, messages):
+                    if 'Control' in version_name:
+                        version = 'Control bot'
+                    elif 'V3' in version_name:
+                        version = 'Coaching bot V3'
+                    elif 'V4' in version_name:
+                        version = 'Coaching bot V4'
+                    elif 'V5' in version_name:
+                        version = 'Coaching bot V5'
+                    elif 'V6' in version_name:
+                        version = 'Coaching bot V6'
+                    break
+            
+            if not version:
+                continue
+            
+            # Determine coaching method
+            method = self.detect_coaching_method(session, messages)
+            
+            # Count this session
+            combination_counts[version][method] += 1
+            
+            # Also track total tagged sessions for percentage calculation
+            tagged_sessions_by_version_method[version][method] += 1
+        
+        # Calculate percentages
+        result = {}
+        for version, method_counts in combination_counts.items():
+            result[version] = {}
+            for method, count in method_counts.items():
+                total_tagged = tagged_sessions_by_version_method[version].get(method, 0)
+                percentage = (count / total_tagged * 100) if total_tagged > 0 else 0
+                result[version][method] = {
+                    'count': count,
+                    'percentage': percentage
+                }
+        
+        return dict(result)
+    
+    def generate_flw_breakdown_table_rows(self, flw_breakdown: Dict) -> str:
+        """Generate HTML rows for FLW breakdown table"""
+        if not flw_breakdown:
+            return "<tr><td colspan='8' class='text-center'>No GS data available</td></tr>"
+        
+        rows = ""
+        tiers = ['0-50', '50-80', '>80']
+        groups = ['Control', 'Coached']
+        
+        # Get all cohorts and sort them
+        cohorts = sorted(flw_breakdown.keys())
+        
+        # Calculate totals
+        total_by_group_tier = defaultdict(lambda: defaultdict(int))
+        total_by_cohort = defaultdict(int)
+        grand_total = 0
+        
+        for cohort, group_data in flw_breakdown.items():
+            cohort_total = 0
+            for group in groups:
+                for tier in tiers:
+                    count = group_data.get(group, {}).get(tier, 0)
+                    total_by_group_tier[group][tier] += count
+                    cohort_total += count
+            total_by_cohort[cohort] = cohort_total
+            grand_total += cohort_total
+        
+        # Generate rows for each cohort
+        for cohort in cohorts:
+            group_data = flw_breakdown[cohort]
+            cohort_total = total_by_cohort[cohort]
+            
+            row = f"<tr><td><strong>{cohort}</strong></td>"
+            
+            # Add counts for each group/tier combination
+            for group in groups:
+                for tier in tiers:
+                    count = group_data.get(group, {}).get(tier, 0)
+                    row += f"<td>{count}</td>"
+            
+            # Add cohort total
+            row += f"<td><strong>{cohort_total}</strong></td></tr>"
+            rows += row
+        
+        # Add totals row
+        if cohorts:
+            rows += "<tr><td><strong>Total</strong></td>"
+            for group in groups:
+                for tier in tiers:
+                    count = total_by_group_tier[group][tier]
+                    rows += f"<td><strong>{count}</strong></td>"
+            rows += f"<td><strong>{grand_total}</strong></td></tr>"
+        
+        return rows
+    
+    def generate_avg_gs_table_rows(self, avg_gs_scores: Dict, metrics: List[Dict]) -> str:
+        """Generate HTML rows for average GS score table"""
+        if not avg_gs_scores:
+            return "<tr><td colspan='6' class='text-center'>No GS data available</td></tr>"
+        
+        methods = ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown']
+        version_names = [m['version_name'] for m in metrics]
+        
+        rows = ""
+        
+        # Calculate totals
+        method_totals = defaultdict(list)  # Store all scores for averaging
+        version_totals = defaultdict(list)
+        
+        for version, method_scores in avg_gs_scores.items():
+            for method, avg_score in method_scores.items():
+                if avg_score > 0:
+                    # We need to track individual scores, but we only have averages
+                    # For now, we'll use a weighted approach or just show the average
+                    method_totals[method].append(avg_score)
+                    version_totals[version].append(avg_score)
+        
+        # Generate rows for each method
+        for method in methods:
+            row = f"<tr><td><strong>{method}</strong></td>"
+            method_scores_list = []
+            
+            for version_name in version_names:
+                avg_score = avg_gs_scores.get(version_name, {}).get(method, 0)
+                if avg_score > 0:
+                    row += f"<td>{avg_score:.1f}</td>"
+                    method_scores_list.append(avg_score)
+                else:
+                    row += "<td>-</td>"
+            
+            # Calculate "All Versions" average for this method
+            if method_scores_list:
+                all_versions_avg = statistics.mean(method_scores_list)
+                row += f"<td><strong>{all_versions_avg:.1f}</strong></td>"
+            else:
+                row += "<td>-</td>"
+            
+            row += "</tr>"
+            rows += row
+        
+        # Add "Total (All Methods)" row
+        rows += "<tr><td><strong>Total (All Methods)</strong></td>"
+        for version_name in version_names:
+            version_scores_list = version_totals.get(version_name, [])
+            if version_scores_list:
+                version_avg = statistics.mean(version_scores_list)
+                rows += f"<td><strong>{version_avg:.1f}</strong></td>"
+            else:
+                rows += "<td>-</td>"
+        
+        # Calculate overall average for "All Versions" column
+        all_scores = []
+        for method_scores_list in method_totals.values():
+            all_scores.extend(method_scores_list)
+        if all_scores:
+            overall_avg = statistics.mean(all_scores)
+            rows += f"<td><strong>{overall_avg:.1f}</strong></td>"
+        else:
+            rows += "<td>-</td>"
+        rows += "</tr>"
+        
+        return rows
+    
+    def generate_dashboard_html(self, metrics: List[Dict], progression_data: Dict = None, rating_stats: Dict = None, progression_data_filtered: Dict = None, volume_data: Dict = None, volume_data_refrigerator: Dict = None, session_participant_map: Dict = None, volume_session_maps: Dict = None, progression_session_data: List[Dict] = None, progression_session_data_filtered: List[Dict] = None, all_sessions: List[Dict] = None, all_messages_data: Dict = None, flw_breakdown: Dict = None, avg_gs_scores: Dict = None, tag_counts: Dict = None, tag_combination_data: Dict = None, today_yesterday_tendency: Dict = None, avg_rating_today: Dict = None, avg_rating_yesterday: Dict = None) -> str:
         """Generate complete dashboard HTML"""
         # Generate summary table
         table_rows = ""
@@ -1862,6 +3075,12 @@ class SimpleVersionComparisonDashboard:
         progression_session_data_json = json.dumps(progression_session_data) if progression_session_data else "[]"
         progression_session_data_filtered_json = json.dumps(progression_session_data_filtered) if progression_session_data_filtered else "[]"
         
+        # Convert tag_counts to JSON for JavaScript
+        tag_counts_json = json.dumps(tag_counts) if tag_counts else "{}"
+        
+        # Convert tag_combination_data to JSON for JavaScript
+        tag_combination_data_json = json.dumps(tag_combination_data) if tag_combination_data else "{}"
+        
         html_content = f"""
 <!DOCTYPE html>
 <html lang="en">
@@ -2029,6 +3248,12 @@ class SimpleVersionComparisonDashboard:
                         <button class="nav-link" id="volume-tab" data-bs-toggle="tab" data-bs-target="#volume" type="button" role="tab" aria-controls="volume" aria-selected="false">Session Volume</button>
                     </li>
                     <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="gold-standard-tab" data-bs-toggle="tab" data-bs-target="#gold-standard" type="button" role="tab" aria-controls="gold-standard" aria-selected="false">Gold Standard</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="tags-tab" data-bs-toggle="tab" data-bs-target="#tags" type="button" role="tab" aria-controls="tags" aria-selected="false">Tags</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
                         <button class="nav-link" id="definitions-tab" data-bs-toggle="tab" data-bs-target="#definitions" type="button" role="tab" aria-controls="definitions" aria-selected="false">Definitions</button>
                     </li>
                 </ul>
@@ -2167,6 +3392,79 @@ class SimpleVersionComparisonDashboard:
                                             </small>
                                         </div>
                                         ''' if rating_stats else ''}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mt-4">
+                            <div class="col-12">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h3>Today vs Yesterday Preference by Method and Version</h3>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="table-responsive">
+                                            <table class="table table-striped table-hover">
+                                                <thead class="table-dark">
+                                                    <tr>
+                                                        <th>Method</th>
+                                                        {''.join([f'<th>{metric["version_name"]}</th>' for metric in metrics])}
+                                                        <th>All Versions</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {self.generate_today_yesterday_table_rows(today_yesterday_tendency, metrics) if today_yesterday_tendency else '<tr><td colspan="' + str(len(metrics) + 2) + '" class="text-center">No data available</td></tr>'}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        <p class="text-muted mt-2">
+                                            <small>
+                                                <strong>Legend:</strong><br>
+                                                <span style="color: green; font-size: 1.5em;">→</span> More users preferred "today"<br>
+                                                <span style="color: red; font-size: 1.5em;">←</span> More users preferred "yesterday"<br>
+                                                <span style="color: orange; font-size: 1.5em;">↔</span> Equal preference (tie)
+                                            </small>
+                                        </p>
+                                        {self.generate_today_yesterday_statistics(today_yesterday_tendency, metrics) if today_yesterday_tendency else ''}
+                                        
+                                        <!-- Average Rating for "Yesterday" Responses -->
+                                        <div class="mt-5">
+                                            <h5>Average Session Rating for Users Who Preferred "Yesterday/Last One"</h5>
+                                            <div class="table-responsive">
+                                                <table class="table table-bordered table-sm">
+                                                    <thead class="table-light">
+                                                        <tr>
+                                                            <th>Method</th>
+                                                            {''.join([f'<th>{metric["version_name"]}</th>' for metric in metrics])}
+                                                            <th>All Versions</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {self.generate_average_rating_table_rows(avg_rating_yesterday, metrics, 'yesterday') if avg_rating_yesterday else '<tr><td colspan="' + str(len(metrics) + 2) + '" class="text-center">No data available</td></tr>'}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Average Rating for "Today" Responses -->
+                                        <div class="mt-5">
+                                            <h5>Average Session Rating for Users Who Preferred "Today"</h5>
+                                            <div class="table-responsive">
+                                                <table class="table table-bordered table-sm">
+                                                    <thead class="table-light">
+                                                        <tr>
+                                                            <th>Method</th>
+                                                            {''.join([f'<th>{metric["version_name"]}</th>' for metric in metrics])}
+                                                            <th>All Versions</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {self.generate_average_rating_table_rows(avg_rating_today, metrics, 'today') if avg_rating_today else '<tr><td colspan="' + str(len(metrics) + 2) + '" class="text-center">No data available</td></tr>'}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -2314,6 +3612,218 @@ class SimpleVersionComparisonDashboard:
                         </div>
                     </div>
                     
+                    <!-- Gold Standard Tab -->
+                    <div class="tab-pane fade" id="gold-standard" role="tabpanel" aria-labelledby="gold-standard-tab">
+                        <div class="row mt-4">
+                            <div class="col-12">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h3>FLW Count by Cohort, Group, and GS Score Tier</h3>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="table-responsive">
+                                            <table class="table table-striped table-hover">
+                                                <thead class="table-dark">
+                                                    <tr>
+                                                        <th>Cohort</th>
+                                                        <th colspan="3">Control</th>
+                                                        <th colspan="3">Coached</th>
+                                                        <th>Total</th>
+                                                    </tr>
+                                                    <tr>
+                                                        <th></th>
+                                                        <th>0-50</th>
+                                                        <th>50-80</th>
+                                                        <th>&gt;80</th>
+                                                        <th>0-50</th>
+                                                        <th>50-80</th>
+                                                        <th>&gt;80</th>
+                                                        <th></th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {self.generate_flw_breakdown_table_rows(flw_breakdown) if flw_breakdown else '<tr><td colspan="8" class="text-center">No GS data available</td></tr>'}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        <p class="text-muted mt-3">
+                                            <small>Note: Group A = Control, Group B = Coached. GS score tiers: 0-50, 50-80, &gt;80.</small>
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mt-4">
+                            <div class="col-12">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h3>Average GS Score by Bot Version and Coaching Method</h3>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="table-responsive">
+                                            <table class="table table-striped table-hover">
+                                                <thead class="table-dark">
+                                                    <tr>
+                                                        <th>Method</th>
+                                                        {''.join([f'<th>{metric["version_name"]}</th>' for metric in metrics])}
+                                                        <th>All Versions</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {self.generate_avg_gs_table_rows(avg_gs_scores, metrics) if avg_gs_scores else f'<tr><td colspan="{len(metrics) + 2}" class="text-center">No GS data available</td></tr>'}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        <p class="text-muted mt-3">
+                                            <small>Note: Average GS scores are calculated for participants who have GS scores and have used the corresponding bot version and coaching method combination.</small>
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Tags Tab -->
+                    <div class="tab-pane fade" id="tags" role="tabpanel" aria-labelledby="tags-tab">
+                        <div class="row mt-4">
+                            <div class="col-12">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h3>Tag Counts by Version and Method</h3>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="mb-3">
+                                            <div class="row">
+                                                <div class="col-md-6">
+                                                    <label for="versionFilterTags" class="form-label">Filter by Bot Version (multi-select):</label>
+                                                    <select class="form-select" id="versionFilterTags" multiple size="6" onchange="updateTagTable()">
+                                                        {''.join([f'<option value="{metric["version_name"]}" selected>{metric["version_name"]}</option>' for metric in metrics])}
+                                                    </select>
+                                                    <small class="form-text text-muted">Hold Ctrl/Cmd to select multiple versions. All versions selected by default.</small>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <label for="tagFilterTags" class="form-label">Filter by Tag (multi-select):</label>
+                                                    <select class="form-select" id="tagFilterTags" multiple size="6" onchange="updateTagTable()">
+                                                        <option value="safe" selected>safe</option>
+                                                        <option value="unsafe" selected>unsafe</option>
+                                                        <option value="acceptable" selected>acceptable</option>
+                                                        <option value="unacceptable" selected>unacceptable</option>
+                                                        <option value="refrigerator_example" selected>refrigerator_example</option>
+                                                        <option value="not_refrigerator_example" selected>not_refrigerator_example</option>
+                                                        <option value="bot_performance_good" selected>bot_performance_good</option>
+                                                        <option value="bot_performance_bad" selected>bot_performance_bad</option>
+                                                        <option value="coaching_good" selected>coaching_good</option>
+                                                        <option value="coaching_undetermined" selected>coaching_undetermined</option>
+                                                        <option value="coaching_bad" selected>coaching_bad</option>
+                                                        <option value="engagement_good" selected>engagement_good</option>
+                                                        <option value="engagement_bad" selected>engagement_bad</option>
+                                                        <option value="user_knowledge_good" selected>user_knowledge_good</option>
+                                                        <option value="user_knowledge_bad" selected>user_knowledge_bad</option>
+                                                        <option value="user_ai_response" selected>user_ai_response</option>
+                                                    </select>
+                                                    <small class="form-text text-muted">Hold Ctrl/Cmd to select multiple tags. All tags selected by default.</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="table-responsive">
+                                            <table class="table table-striped table-hover" id="tagTable">
+                                                <thead class="table-dark">
+                                                    <tr>
+                                                        <th rowspan="2">Tag</th>
+                                                        <th colspan="2">Total Sessions</th>
+                                                        <th colspan="2">Scenario</th>
+                                                        <th colspan="2">Microlearning</th>
+                                                        <th colspan="2">Microlearning vaccines</th>
+                                                        <th colspan="2">Motivational interviewing</th>
+                                                        <th colspan="2">Visit check in</th>
+                                                        <th colspan="2">Unknown</th>
+                                                    </tr>
+                                                    <tr>
+                                                        <th>Count</th>
+                                                        <th>%</th>
+                                                        <th>Count</th>
+                                                        <th>%</th>
+                                                        <th>Count</th>
+                                                        <th>%</th>
+                                                        <th>Count</th>
+                                                        <th>%</th>
+                                                        <th>Count</th>
+                                                        <th>%</th>
+                                                        <th>Count</th>
+                                                        <th>%</th>
+                                                        <th>Count</th>
+                                                        <th>%</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="tagTableBody">
+                                                    {self.generate_tag_table_rows(tag_counts, metrics) if tag_counts else '<tr><td colspan="15" class="text-center">No tag data available</td></tr>'}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        <p class="text-muted mt-3">
+                                            <small>Note: A tagged session is a session that carries non-version tags and non-method tags either at session level or message level.</small>
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mt-4">
+                            <div class="col-12">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h3>Sessions with Tag Combinations</h3>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="mb-3">
+                                            <label for="tagCombinationFilter" class="form-label">Select Tag(s) to Filter (multi-select):</label>
+                                            <select class="form-select" id="tagCombinationFilter" multiple size="6" onchange="updateTagCombinationTable()">
+                                                <option value="safe">safe</option>
+                                                <option value="unsafe">unsafe</option>
+                                                <option value="acceptable">acceptable</option>
+                                                <option value="unacceptable">unacceptable</option>
+                                                <option value="refrigerator_example">refrigerator_example</option>
+                                                <option value="not_refrigerator_example">not_refrigerator_example</option>
+                                                <option value="bot_performance_good">bot_performance_good</option>
+                                                <option value="bot_performance_bad">bot_performance_bad</option>
+                                                <option value="coaching_good">coaching_good</option>
+                                                <option value="coaching_undetermined">coaching_undetermined</option>
+                                                <option value="coaching_bad">coaching_bad</option>
+                                                <option value="engagement_good">engagement_good</option>
+                                                <option value="engagement_bad">engagement_bad</option>
+                                                <option value="user_knowledge_good">user_knowledge_good</option>
+                                                <option value="user_knowledge_bad">user_knowledge_bad</option>
+                                                <option value="user_ai_response">user_ai_response</option>
+                                            </select>
+                                            <small class="form-text text-muted">Hold Ctrl/Cmd to select multiple tags. Sessions must have ALL selected tags (at session or message level).</small>
+                                        </div>
+                                        <div class="table-responsive">
+                                            <table class="table table-striped table-hover" id="tagCombinationTable">
+                                                <thead class="table-dark">
+                                                    <tr>
+                                                        <th>Method</th>
+                                                        {''.join([f'<th colspan="2">{metric["version_name"]}</th>' for metric in metrics])}
+                                                    </tr>
+                                                    <tr>
+                                                        <th></th>
+                                                        {''.join([f'<th>Count</th><th>%</th>' for metric in metrics])}
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="tagCombinationTableBody">
+                                                    <tr><td colspan="{len(metrics) * 2 + 1}" class="text-center">Select one or more tags to see results</td></tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        <p class="text-muted mt-3">
+                                            <small>Note: Shows sessions that have ALL selected tags. Percentage is based on total tagged sessions for that version/method combination.</small>
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
                     <!-- Definitions Tab -->
                     <div class="tab-pane fade" id="definitions" role="tabpanel" aria-labelledby="definitions-tab">
         <div class="row mt-4">
@@ -2422,6 +3932,180 @@ class SimpleVersionComparisonDashboard:
         // Progression session-level data for filtering
         const progressionSessionData = {progression_session_data_json};
         const progressionSessionDataFiltered = {progression_session_data_filtered_json};
+        
+        // Tag counts data from server
+        const tagCountsData = {tag_counts_json};
+        
+        // Tag combination data from server
+        const tagCombinationData = {tag_combination_data_json};
+        
+        // Function to update tag table based on selected versions and tags
+        function updateTagTable() {{
+            const versionSelect = document.getElementById('versionFilterTags');
+            const tagSelect = document.getElementById('tagFilterTags');
+            const tableBody = document.getElementById('tagTableBody');
+            if (!versionSelect || !tagSelect || !tableBody || !tagCountsData) return;
+            
+            // Get selected versions
+            const selectedVersions = Array.from(versionSelect.selectedOptions).map(opt => opt.value);
+            const versionsToShow = selectedVersions.length > 0 ? selectedVersions : Object.keys(tagCountsData).filter(v => v !== 'All Versions');
+            
+            // Get selected tags
+            const selectedTags = Array.from(tagSelect.selectedOptions).map(opt => opt.value);
+            const tagsToTrack = [
+                'safe', 'unsafe', 'acceptable', 'unacceptable',
+                'refrigerator_example', 'not_refrigerator_example',
+                'bot_performance_good', 'bot_performance_bad',
+                'coaching_good', 'coaching_undetermined', 'coaching_bad',
+                'engagement_good', 'engagement_bad',
+                'user_knowledge_good', 'user_knowledge_bad',
+                'user_ai_response'
+            ];
+            const tagsToShow = selectedTags.length > 0 ? selectedTags : tagsToTrack;
+            
+            const methods = ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown'];
+            
+            // Calculate total tagged sessions per method across selected versions
+            const totalTaggedByMethod = {{}};
+            methods.forEach(method => totalTaggedByMethod[method] = 0);
+            let totalTaggedSessions = 0;
+            
+            versionsToShow.forEach(version => {{
+                if (tagCountsData[version] && tagCountsData[version]['_tagged_sessions']) {{
+                    totalTaggedSessions += tagCountsData[version]['_tagged_sessions'].total || 0;
+                    methods.forEach(method => {{
+                        totalTaggedByMethod[method] += tagCountsData[version]['_tagged_sessions'][method] || 0;
+                    }});
+                }}
+            }});
+            
+            let html = '';
+            
+            // Generate rows for each selected tag
+            tagsToShow.forEach(tag => {{
+                html += `<tr><td><strong>${{tag}}</strong></td>`;
+                
+                // Total count across selected versions
+                let totalCount = 0;
+                versionsToShow.forEach(version => {{
+                    if (tagCountsData[version] && tagCountsData[version][tag]) {{
+                        totalCount += tagCountsData[version][tag].total || 0;
+                    }}
+                }});
+                
+                // Total percentage
+                const totalPercentage = totalTaggedSessions > 0 ? (totalCount / totalTaggedSessions * 100) : 0;
+                html += `<td>${{totalCount}}</td><td>${{totalPercentage.toFixed(1)}}%</td>`;
+                
+                // Count by method (aggregated across selected versions)
+                const methodTotals = {{}};
+                methods.forEach(method => methodTotals[method] = 0);
+                
+                versionsToShow.forEach(version => {{
+                    if (tagCountsData[version] && tagCountsData[version][tag]) {{
+                        methods.forEach(method => {{
+                            methodTotals[method] += tagCountsData[version][tag][method] || 0;
+                        }});
+                    }}
+                }});
+                
+                methods.forEach(method => {{
+                    const count = methodTotals[method];
+                    // Percentage: count for this method / total count for this tag
+                    const percentage = totalCount > 0 ? (count / totalCount * 100) : 0;
+                    html += `<td>${{count}}</td><td>${{percentage.toFixed(1)}}%</td>`;
+                }});
+                
+                html += '</tr>';
+            }});
+            
+            // Add Total row
+            html += '<tr><td><strong>Total</strong></td>';
+            html += `<td><strong>${{totalTaggedSessions}}</strong></td><td><strong>100.0%</strong></td>`;
+            
+            // Total by method - sum across selected versions
+            const totalByMethod = {{}};
+            methods.forEach(method => totalByMethod[method] = 0);
+            
+            versionsToShow.forEach(version => {{
+                if (tagCountsData[version] && tagCountsData[version]['_tagged_sessions']) {{
+                    methods.forEach(method => {{
+                        totalByMethod[method] += tagCountsData[version]['_tagged_sessions'][method] || 0;
+                    }});
+                }}
+            }});
+            
+            methods.forEach(method => {{
+                const count = totalByMethod[method];
+                const percentage = totalTaggedSessions > 0 ? (count / totalTaggedSessions * 100) : 0;
+                html += `<td><strong>${{count}}</strong></td><td><strong>${{percentage.toFixed(1)}}%</strong></td>`;
+            }});
+            
+            html += '</tr>';
+            
+            tableBody.innerHTML = html;
+        }}
+        
+        // Function to update tag combination table
+        function updateTagCombinationTable() {{
+            const select = document.getElementById('tagCombinationFilter');
+            const tableBody = document.getElementById('tagCombinationTableBody');
+            if (!select || !tableBody || !tagCombinationData) return;
+            
+            // Get selected tags
+            const selectedTags = Array.from(select.selectedOptions).map(opt => opt.value);
+            
+            if (selectedTags.length === 0) {{
+                const numCols = {len(metrics) * 2 + 1};
+                tableBody.innerHTML = '<tr><td colspan="' + numCols + '" class="text-center">Select one or more tags to see results</td></tr>';
+                return;
+            }}
+            
+            const methods = ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown'];
+            const versionNames = {json.dumps([m['version_name'] for m in metrics])};
+            
+            // Calculate counts for each version/method combination
+            const counts = {{}};
+            const totalTagged = {{}};
+            
+            versionNames.forEach(version => {{
+                counts[version] = {{}};
+                totalTagged[version] = {{}};
+                methods.forEach(method => {{
+                    counts[version][method] = 0;
+                    totalTagged[version][method] = 0;
+                    
+                    if (tagCombinationData[version] && tagCombinationData[version][method]) {{
+                        const sessionsData = tagCombinationData[version][method].sessions || {{}};
+                        totalTagged[version][method] = tagCombinationData[version][method].total_tagged || 0;
+                        
+                        // Count sessions that have ALL selected tags
+                        Object.keys(sessionsData).forEach(sessionId => {{
+                            const sessionTags = sessionsData[sessionId] || [];
+                            const hasAllTags = selectedTags.every(tag => sessionTags.includes(tag));
+                            if (hasAllTags) {{
+                                counts[version][method]++;
+                            }}
+                        }});
+                    }}
+                }});
+            }});
+            
+            // Generate table rows
+            let html = '';
+            methods.forEach(method => {{
+                html += `<tr><td><strong>${{method}}</strong></td>`;
+                versionNames.forEach(version => {{
+                    const count = counts[version][method] || 0;
+                    const total = totalTagged[version][method] || 0;
+                    const percentage = total > 0 ? (count / total * 100) : 0;
+                    html += `<td>${{count}}</td><td>${{percentage.toFixed(1)}}%</td>`;
+                }});
+                html += '</tr>';
+            }});
+            
+            tableBody.innerHTML = html;
+        }}
         
         // Table rows for refrigerator filter toggle (as JSON strings for safe embedding)
         const summaryTableRows = {json.dumps(table_rows)};
@@ -3927,8 +5611,49 @@ class SimpleVersionComparisonDashboard:
             if session_id and participant_id:
                 session_participant_map[session_id] = participant_id
         
+        # Load GS data and calculate GS metrics
+        print("Loading GS visit data...")
+        gs_data = self.load_gs_visit_list()
+        
+        flw_breakdown = None
+        avg_gs_scores = None
+        if gs_data:
+            print("Calculating FLW breakdown by GS tiers...")
+            flw_breakdown = self.calculate_flw_breakdown_by_gs_tiers(gs_data)
+            
+            print("Calculating average GS scores by version and method...")
+            avg_gs_scores = self.calculate_avg_gs_by_version_and_method(sessions, messages_data, gs_data)
+        
+        # Calculate tag counts
+        print("Calculating tag counts by version and method...")
+        tag_counts = self.calculate_tag_counts_by_version_and_method(sessions, messages_data)
+        
+        # Prepare tag combination data
+        print("Preparing tag combination data...")
+        tag_combination_data = self.prepare_tag_combination_data(sessions, messages_data)
+        
+        # Calculate today/yesterday preference tendency
+        print("Calculating today/yesterday preference tendency...")
+        today_yesterday_tendency = self.calculate_today_yesterday_tendency_by_version_and_method(sessions, messages_data)
+        
+        # Debug: Print statistics
+        if today_yesterday_tendency and '_stats' in today_yesterday_tendency:
+            total_questions = 0
+            total_responses = 0
+            for version_stats in today_yesterday_tendency['_stats'].values():
+                for method_stats in version_stats.values():
+                    total_questions += method_stats.get('sessions_with_question', 0)
+                    total_responses += method_stats.get('sessions_with_response', 0)
+            print(f"  Found {total_questions} sessions with today/yesterday questions")
+            print(f"  Found {total_responses} sessions with valid responses")
+        
+        # Calculate average ratings for "today" and "yesterday" responses
+        print("Calculating average ratings by preference...")
+        avg_rating_today = self.calculate_average_rating_by_preference(sessions, messages_data, 'today')
+        avg_rating_yesterday = self.calculate_average_rating_by_preference(sessions, messages_data, 'yesterday')
+        
         # Generate HTML
-        html_content = self.generate_dashboard_html(metrics, progression_data, rating_stats, progression_data_filtered, volume_data, volume_data_refrigerator, session_participant_map, volume_session_maps, progression_session_data, progression_session_data_filtered, sessions, messages_data)
+        html_content = self.generate_dashboard_html(metrics, progression_data, rating_stats, progression_data_filtered, volume_data, volume_data_refrigerator, session_participant_map, volume_session_maps, progression_session_data, progression_session_data_filtered, sessions, messages_data, flw_breakdown, avg_gs_scores, tag_counts, tag_combination_data, today_yesterday_tendency, avg_rating_today, avg_rating_yesterday)
         
         # Save to file
         output_file = self.output_dir / "version_comparison_dashboard.html"
