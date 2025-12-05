@@ -57,7 +57,7 @@
                     <p>This dashboard compares coaching bot versions based on session metrics, annotations, and user engagement.</p>
                     <hr>
                     <p class="mb-0">
-                        <strong>Generated:</strong> 2025-12-04 18:54:22
+                        <strong>Generated:</strong> 2025-12-05 16:01:45
                     </p>
                 </div>
             </div>
@@ -318,6 +318,45 @@
                     </div>
                     <!-- Performance Tab -->
                     <div class="tab-pane fade" id="performance" role="tabpanel" aria-labelledby="performance-tab">
+                        <!-- FLW Rating Distribution Chart -->
+                        <div class="row mt-4">
+                            <div class="col-12">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h3>FLW Rating Distribution</h3>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="mb-3">
+                                            <div class="row">
+                                                <div class="col-md-6">
+                                                    <label for="ratingChartMethodFilter" class="form-label">Filter by Coaching Method:</label>
+                                                    <select class="form-select" id="ratingChartMethodFilter" onchange="updateRatingDistributionChart()">
+                                                        <option value="all">All Methods</option>
+                                                        <option value="Scenario">Scenario</option>
+                                                        <option value="Microlearning">Microlearning</option>
+                                                        <option value="Microlearning vaccines">Microlearning vaccines</option>
+                                                        <option value="Motivational interviewing">Motivational interviewing</option>
+                                                        <option value="Visit check in">Visit check in</option>
+                                                        <option value="Unknown">Unknown</option>
+                                                    </select>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <label for="ratingChartVersionFilter" class="form-label">Filter by Bot Version:</label>
+                                                    <select class="form-select" id="ratingChartVersionFilter" onchange="updateRatingDistributionChart()">
+                                                        <option value="all">All Versions</option>
+                                                        <option value="Control bot">Control bot</option><option value="Coaching bot V3">Coaching bot V3</option><option value="Coaching bot V4">Coaching bot V4</option><option value="Coaching bot V5">Coaching bot V5</option><option value="Coaching bot V6">Coaching bot V6</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="chart-container" style="position: relative; height: 400px;">
+                                            <canvas id="ratingDistributionChart"></canvas>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
                         <div class="row mt-4">
                             <div class="col-12">
                                 <div class="card">
@@ -513,6 +552,17 @@
                                         <h3>Median User Words per Session by Method and Version</h3>
                                     </div>
                                     <div class="card-body">
+                                        <div class="mb-3">
+                                            <label class="form-label">Display Mode:</label>
+                                            <div class="btn-group" role="group" aria-label="Words display mode">
+                                                <input type="radio" class="btn-check" name="wordsDisplayMode" id="wordsModePerSession" value="per_session" checked onchange="updateMedianWordsTable()">
+                                                <label class="btn btn-outline-primary" for="wordsModePerSession">Per Session</label>
+                                                
+                                                <input type="radio" class="btn-check" name="wordsDisplayMode" id="wordsModePerMessage" value="per_message" onchange="updateMedianWordsTable()">
+                                                <label class="btn btn-outline-primary" for="wordsModePerMessage">Per Message</label>
+                                            </div>
+                                            <small class="form-text text-muted d-block mt-2">Per Session: Median words per session. Per Message: Median words per session divided by median messages per session.</small>
+                                        </div>
                                         <div class="table-responsive">
                                             <table class="table table-striped table-hover" id="medianWordsTable">
                                                 <thead class="table-dark">
@@ -701,6 +751,19 @@
                                     </div>
                                     <div class="card-body">
                                         <div class="mb-3">
+                                            <div class="row mb-3">
+                                                <div class="col-12">
+                                                    <label class="form-label">Display Mode:</label>
+                                                    <div class="btn-group" role="group" aria-label="Tag display mode">
+                                                        <input type="radio" class="btn-check" name="tagDisplayMode" id="tagModeCount" value="count" checked onchange="updateTagTable()">
+                                                        <label class="btn btn-outline-primary" for="tagModeCount">Count</label>
+                                                        
+                                                        <input type="radio" class="btn-check" name="tagDisplayMode" id="tagModeGS" value="gs_score" onchange="updateTagTable()">
+                                                        <label class="btn btn-outline-primary" for="tagModeGS">GS Score</label>
+                                                    </div>
+                                                    <small class="form-text text-muted d-block mt-2">Count: Number of sessions with tags. GS Score: Median GS score for participants in tagged sessions.</small>
+                                                </div>
+                                            </div>
                                             <div class="row">
                                                 <div class="col-md-6">
                                                     <label for="versionFilterTags" class="form-label">Filter by Bot Version (multi-select):</label>
@@ -735,7 +798,7 @@
                                         </div>
                                         <div class="table-responsive">
                                             <table class="table table-striped table-hover" id="tagTable">
-                                                <thead class="table-dark">
+                                                <thead class="table-dark" id="tagTableHeader">
                                                     <tr>
                                                         <th rowspan="2">Tag</th>
                                                         <th colspan="2">Total Sessions</th>
@@ -784,6 +847,19 @@
                                     </div>
                                     <div class="card-body">
                                         <div class="mb-3">
+                                            <div class="row mb-3">
+                                                <div class="col-12">
+                                                    <label class="form-label">Display Mode:</label>
+                                                    <div class="btn-group" role="group" aria-label="Tag combination display mode">
+                                                        <input type="radio" class="btn-check" name="tagCombinationDisplayMode" id="tagCombinationModeCount" value="count" checked onchange="updateTagCombinationTable()">
+                                                        <label class="btn btn-outline-primary" for="tagCombinationModeCount">Count</label>
+                                                        
+                                                        <input type="radio" class="btn-check" name="tagCombinationDisplayMode" id="tagCombinationModeGS" value="gs_score" onchange="updateTagCombinationTable()">
+                                                        <label class="btn btn-outline-primary" for="tagCombinationModeGS">GS Score</label>
+                                                    </div>
+                                                    <small class="form-text text-muted d-block mt-2">Count: Number of sessions with tag combinations. GS Score: Median GS score for participants in sessions with tag combinations.</small>
+                                                </div>
+                                            </div>
                                             <label for="tagCombinationFilter" class="form-label">Select Tag(s) to Filter (multi-select):</label>
                                             <select class="form-select" id="tagCombinationFilter" multiple size="6" onchange="updateTagCombinationTable()">
                                                 <option value="safe">safe</option>
@@ -807,7 +883,7 @@
                                         </div>
                                         <div class="table-responsive">
                                             <table class="table table-striped table-hover" id="tagCombinationTable">
-                                                <thead class="table-dark">
+                                                <thead class="table-dark" id="tagCombinationTableHeader">
                                                     <tr>
                                                         <th>Method</th>
                                                         <th colspan="2">Control bot</th><th colspan="2">Coaching bot V3</th><th colspan="2">Coaching bot V4</th><th colspan="2">Coaching bot V5</th><th colspan="2">Coaching bot V6</th>
@@ -943,121 +1019,343 @@
         // Tag counts data from server
         const tagCountsData = {"Coaching bot V5": {"safe": {"Microlearning": 12, "total": 56, "Microlearning vaccines": 5, "Scenario": 23, "Motivational interviewing": 9, "Visit check in": 7}, "bot_performance_bad": {"Microlearning": 7, "total": 23, "Motivational interviewing": 4, "Scenario": 8, "Microlearning vaccines": 3, "Visit check in": 1}, "coaching_good": {"Microlearning": 2, "total": 8, "Scenario": 4, "Motivational interviewing": 2}, "engagement_good": {"Microlearning": 7, "total": 39, "Microlearning vaccines": 1, "Scenario": 20, "Motivational interviewing": 4, "Visit check in": 7}, "acceptable": {"Microlearning": 8, "total": 45, "Microlearning vaccines": 4, "Scenario": 20, "Motivational interviewing": 6, "Visit check in": 7}, "bot_performance_good": {"Microlearning": 7, "total": 42, "Microlearning vaccines": 3, "Scenario": 19, "Motivational interviewing": 7, "Visit check in": 6}, "refrigerator_example": {"Microlearning vaccines": 2, "total": 23, "Scenario": 11, "Motivational interviewing": 3, "Microlearning": 3, "Visit check in": 4}, "user_ai_response": {"Scenario": 4, "total": 5, "Visit check in": 1}, "user_knowledge_good": {"Motivational interviewing": 1, "total": 10, "Scenario": 6, "Microlearning": 1, "Microlearning vaccines": 1, "Visit check in": 1}, "engagement_bad": {"Scenario": 3, "total": 3}, "not_refrigerator_example": {"Microlearning vaccines": 1, "total": 1}, "_tagged_sessions": {"Scenario": 27, "Microlearning": 13, "Microlearning vaccines": 6, "Motivational interviewing": 9, "Visit check in": 7, "Unknown": 0, "total": 62}}, "Coaching bot V4": {"safe": {"Microlearning": 52, "total": 139, "Visit check in": 18, "Motivational interviewing": 25, "Scenario": 41, "Unknown": 3}, "bot_performance_good": {"Microlearning": 22, "total": 69, "Motivational interviewing": 11, "Visit check in": 11, "Scenario": 25}, "bot_performance_bad": {"Microlearning": 35, "total": 81, "Visit check in": 11, "Motivational interviewing": 16, "Scenario": 19}, "engagement_good": {"Microlearning": 32, "total": 89, "Motivational interviewing": 18, "Visit check in": 13, "Scenario": 26}, "acceptable": {"Visit check in": 12, "total": 97, "Microlearning": 38, "Motivational interviewing": 18, "Scenario": 29}, "coaching_good": {"Visit check in": 6, "total": 72, "Microlearning": 37, "Motivational interviewing": 10, "Scenario": 19}, "engagement_bad": {"Visit check in": 3, "total": 25, "Microlearning": 9, "Scenario": 8, "Motivational interviewing": 5}, "refrigerator_example": {"Microlearning": 34, "total": 57, "Motivational interviewing": 5, "Scenario": 15, "Visit check in": 3}, "user_knowledge_good": {"Microlearning": 17, "total": 57, "Motivational interviewing": 16, "Visit check in": 7, "Scenario": 17}, "not_refrigerator_example": {"Microlearning": 15, "total": 18, "Motivational interviewing": 3}, "coaching_undetermined": {"Motivational interviewing": 8, "total": 21, "Microlearning": 4, "Visit check in": 5, "Scenario": 4}, "user_knowledge_bad": {"Microlearning": 10, "total": 19, "Scenario": 6, "Visit check in": 1, "Motivational interviewing": 2}, "coaching_bad": {"Scenario": 3, "total": 8, "Visit check in": 2, "Microlearning": 2, "Motivational interviewing": 1}, "unacceptable": {"Microlearning": 3, "total": 9, "Scenario": 1, "Motivational interviewing": 4, "Visit check in": 1}, "user_ai_response": {"Microlearning": 2, "total": 5, "Motivational interviewing": 1, "Scenario": 2}, "_tagged_sessions": {"Scenario": 43, "Microlearning": 79, "Microlearning vaccines": 0, "Motivational interviewing": 28, "Visit check in": 19, "Unknown": 3, "total": 172}}, "Coaching bot V3": {"bot_performance_bad": {"Scenario": 28, "total": 45, "Visit check in": 17}, "coaching_good": {"Scenario": 20, "total": 25, "Visit check in": 5}, "coaching_undetermined": {"Scenario": 16, "total": 24, "Visit check in": 8}, "bot_performance_good": {"Scenario": 39, "total": 54, "Visit check in": 15}, "safe": {"Scenario": 21, "total": 24, "Visit check in": 3}, "engagement_good": {"Scenario": 18, "total": 25, "Visit check in": 7}, "engagement_bad": {"Visit check in": 7, "total": 15, "Scenario": 8}, "user_knowledge_good": {"Scenario": 6, "total": 8, "Visit check in": 2}, "user_ai_response": {"Scenario": 2, "total": 4, "Visit check in": 2}, "coaching_bad": {"Visit check in": 2, "total": 3, "Scenario": 1}, "user_knowledge_bad": {"Scenario": 1, "total": 1}, "_tagged_sessions": {"Scenario": 57, "Microlearning": 0, "Microlearning vaccines": 0, "Motivational interviewing": 0, "Visit check in": 23, "Unknown": 0, "total": 80}}, "Coaching bot V6": {"safe": {"Microlearning": 1, "total": 4, "Visit check in": 1, "Motivational interviewing": 1, "Microlearning vaccines": 1}, "refrigerator_example": {"Motivational interviewing": 5, "total": 8, "Microlearning vaccines": 3}, "bot_performance_good": {"Motivational interviewing": 4, "total": 7, "Microlearning vaccines": 3}, "engagement_good": {"Motivational interviewing": 4, "total": 8, "Microlearning vaccines": 3, "Microlearning": 1}, "acceptable": {"Visit check in": 1, "total": 3, "Motivational interviewing": 1, "Microlearning vaccines": 1}, "coaching_good": {"Visit check in": 1, "total": 2, "Motivational interviewing": 1}, "user_knowledge_good": {"Visit check in": 1, "total": 6, "Motivational interviewing": 3, "Microlearning": 1, "Microlearning vaccines": 1}, "bot_performance_bad": {"Microlearning vaccines": 3, "total": 6, "Microlearning": 3}, "user_ai_response": {"Microlearning vaccines": 1, "total": 1}, "engagement_bad": {"Microlearning": 1, "total": 2, "Microlearning vaccines": 1}, "_tagged_sessions": {"Scenario": 0, "Microlearning": 4, "Microlearning vaccines": 7, "Motivational interviewing": 5, "Visit check in": 1, "Unknown": 0, "total": 17}}, "Control bot": {"bot_performance_bad": {"Unknown": 2, "total": 2}, "_tagged_sessions": {"Scenario": 0, "Microlearning": 0, "Microlearning vaccines": 0, "Motivational interviewing": 0, "Visit check in": 0, "Unknown": 2, "total": 2}}, "All Versions": {"safe": {"Microlearning": 65, "Visit check in": 29, "Motivational interviewing": 35, "Scenario": 85, "Microlearning vaccines": 6, "Unknown": 3, "total": 223}, "unsafe": {"total": 0}, "acceptable": {"Visit check in": 20, "Microlearning": 46, "Motivational interviewing": 25, "Microlearning vaccines": 5, "Scenario": 49, "total": 145}, "unacceptable": {"Microlearning": 3, "Scenario": 1, "Motivational interviewing": 4, "Visit check in": 1, "total": 9}, "refrigerator_example": {"Microlearning": 37, "Motivational interviewing": 13, "Microlearning vaccines": 5, "Scenario": 26, "Visit check in": 7, "total": 88}, "not_refrigerator_example": {"Microlearning": 15, "Motivational interviewing": 3, "Microlearning vaccines": 1, "total": 19}, "bot_performance_good": {"Microlearning": 29, "Scenario": 83, "Motivational interviewing": 22, "Microlearning vaccines": 6, "Visit check in": 32, "total": 172}, "bot_performance_bad": {"Microlearning": 45, "Visit check in": 29, "Scenario": 55, "Motivational interviewing": 20, "Unknown": 2, "Microlearning vaccines": 6, "total": 157}, "coaching_good": {"Microlearning": 39, "Visit check in": 12, "Scenario": 43, "Motivational interviewing": 13, "total": 107}, "coaching_undetermined": {"Scenario": 20, "Motivational interviewing": 8, "Microlearning": 4, "Visit check in": 13, "total": 45}, "coaching_bad": {"Scenario": 4, "Visit check in": 4, "Microlearning": 2, "Motivational interviewing": 1, "total": 11}, "engagement_good": {"Microlearning": 40, "Motivational interviewing": 26, "Scenario": 64, "Microlearning vaccines": 4, "Visit check in": 27, "total": 161}, "engagement_bad": {"Visit check in": 10, "Microlearning": 10, "Scenario": 19, "Motivational interviewing": 5, "Microlearning vaccines": 1, "total": 45}, "user_knowledge_good": {"Microlearning": 19, "Motivational interviewing": 20, "Scenario": 29, "Visit check in": 11, "Microlearning vaccines": 2, "total": 81}, "user_knowledge_bad": {"Microlearning": 10, "Scenario": 7, "Visit check in": 1, "Motivational interviewing": 2, "total": 20}, "user_ai_response": {"Scenario": 8, "Visit check in": 3, "Microlearning": 2, "Motivational interviewing": 1, "Microlearning vaccines": 1, "total": 15}}};
         
+        // Tag GS scores data from server
+        const tagGScoresData = {"Coaching bot V5": {"safe": {"Scenario": 89.0, "Microlearning": 85, "Microlearning vaccines": 89, "Motivational interviewing": 90.5, "Visit check in": 89, "total": 89}, "acceptable": {"Scenario": 89, "Microlearning": 89, "Microlearning vaccines": 89.0, "Motivational interviewing": 92, "Visit check in": 89, "total": 89.0}, "refrigerator_example": {"Scenario": 89, "Microlearning": 85, "Microlearning vaccines": 74.5, "Motivational interviewing": 92, "Visit check in": 89.0, "total": 89}, "not_refrigerator_example": {"Microlearning vaccines": 89, "total": 89}, "bot_performance_good": {"Scenario": 89.0, "Microlearning": 89.0, "Microlearning vaccines": 89, "Motivational interviewing": 92.0, "Visit check in": 85.5, "total": 89}, "bot_performance_bad": {"Scenario": 89, "Microlearning": 85, "Microlearning vaccines": 86, "Motivational interviewing": 89.0, "Visit check in": 92, "total": 89.0}, "coaching_good": {"Scenario": 85.5, "Microlearning": 74.5, "Motivational interviewing": 92.0, "total": 90.5}, "engagement_good": {"Scenario": 89.0, "Microlearning": 85.5, "Microlearning vaccines": 96, "Motivational interviewing": 92, "Visit check in": 89, "total": 89}, "engagement_bad": {"Scenario": 92, "total": 92}, "user_knowledge_good": {"Scenario": 92, "Microlearning vaccines": 89, "Motivational interviewing": 92, "Visit check in": 89, "total": 90.5}, "user_ai_response": {"Scenario": 90.5, "Visit check in": 82, "total": 89}}, "Coaching bot V4": {"safe": {"Scenario": 100, "Microlearning": 100, "Motivational interviewing": 100, "Visit check in": 98.0, "Unknown": 96, "total": 100.0}, "acceptable": {"Scenario": 100, "Microlearning": 100, "Motivational interviewing": 100.0, "Visit check in": 100.0, "total": 100.0}, "unacceptable": {"Scenario": 100, "Microlearning": 100, "Motivational interviewing": 96.0, "Visit check in": 100, "total": 100}, "refrigerator_example": {"Scenario": 100.0, "Microlearning": 100, "Motivational interviewing": 100, "Visit check in": 96, "total": 100}, "not_refrigerator_example": {"Microlearning": 100, "Motivational interviewing": 100, "total": 100.0}, "bot_performance_good": {"Scenario": 100, "Microlearning": 100, "Motivational interviewing": 100, "Visit check in": 96, "total": 100.0}, "bot_performance_bad": {"Scenario": 100.0, "Microlearning": 96.0, "Motivational interviewing": 100.0, "Visit check in": 96, "total": 100}, "coaching_good": {"Scenario": 100.0, "Microlearning": 100, "Motivational interviewing": 100.0, "Visit check in": 100.0, "total": 100}, "coaching_undetermined": {"Scenario": 100.0, "Microlearning": 100, "Motivational interviewing": 100.0, "Visit check in": 96, "total": 100.0}, "coaching_bad": {"Scenario": 98.0, "Microlearning": 92, "Motivational interviewing": 100, "Visit check in": 94.5, "total": 98.0}, "engagement_good": {"Scenario": 100, "Microlearning": 100, "Motivational interviewing": 100.0, "Visit check in": 96, "total": 100}, "engagement_bad": {"Scenario": 100, "Microlearning": 100, "Motivational interviewing": 100, "Visit check in": 100, "total": 100.0}, "user_knowledge_good": {"Scenario": 100.0, "Microlearning": 100, "Motivational interviewing": 100.0, "Visit check in": 100, "total": 100.0}, "user_knowledge_bad": {"Scenario": 100, "Microlearning": 100.0, "Motivational interviewing": 98.0, "Visit check in": 100, "total": 100.0}, "user_ai_response": {"Scenario": 96, "Microlearning": 96, "Motivational interviewing": 89, "total": 96}}, "Coaching bot V3": {"safe": {"Scenario": 96, "Visit check in": 96, "total": 96.0}, "bot_performance_good": {"Scenario": 92.0, "Visit check in": 92, "total": 92}, "bot_performance_bad": {"Scenario": 92.0, "Visit check in": 92.0, "total": 92.0}, "coaching_good": {"Scenario": 96, "Visit check in": 96.0, "total": 96}, "coaching_undetermined": {"Scenario": 92, "Visit check in": 92, "total": 92.0}, "coaching_bad": {"Scenario": 75, "Visit check in": 83.5, "total": 75}, "engagement_good": {"Scenario": 92, "Visit check in": 82, "total": 87.0}, "engagement_bad": {"Scenario": 89.0, "Visit check in": 83.5, "total": 87.0}, "user_knowledge_good": {"Scenario": 82, "Visit check in": 78.5, "total": 82}, "user_knowledge_bad": {"Scenario": 96, "total": 96}}, "Coaching bot V6": {"safe": {"Microlearning": 89, "Microlearning vaccines": 96, "Visit check in": 67, "total": 89}, "acceptable": {"Microlearning vaccines": 96, "Visit check in": 67, "total": 81.5}, "refrigerator_example": {"Microlearning vaccines": 96, "Motivational interviewing": 83.5, "total": 85}, "bot_performance_good": {"Microlearning vaccines": 82, "Motivational interviewing": 83.5, "total": 82}, "bot_performance_bad": {"Microlearning": 85, "Microlearning vaccines": 96, "total": 87.0}, "coaching_good": {"Visit check in": 67, "total": 67}, "engagement_good": {"Microlearning": 78, "Microlearning vaccines": 96, "Motivational interviewing": 83.5, "total": 83.5}, "engagement_bad": {"Microlearning": 78, "Microlearning vaccines": 96, "total": 87.0}, "user_knowledge_good": {"Microlearning": 78, "Microlearning vaccines": 100, "Motivational interviewing": 83.5, "Visit check in": 67, "total": 78}, "user_ai_response": {"Microlearning vaccines": 82, "total": 82}}, "Control bot": {"bot_performance_bad": {"Unknown": 87.0, "total": 87.0}}, "All Versions": {"safe": {"Scenario": 96.0, "Microlearning": 96, "Microlearning vaccines": 89.0, "Motivational interviewing": 96, "Visit check in": 96, "Unknown": 96, "total": 96.0}, "unsafe": {}, "acceptable": {"Scenario": 96.0, "Microlearning": 100.0, "Microlearning vaccines": 89, "Motivational interviewing": 100, "Visit check in": 94.0, "total": 96.0}, "unacceptable": {"Scenario": 100, "Microlearning": 100, "Motivational interviewing": 96.0, "Visit check in": 100, "total": 100}, "refrigerator_example": {"Scenario": 96, "Microlearning": 100.0, "Microlearning vaccines": 96, "Motivational interviewing": 92.0, "Visit check in": 92, "total": 96}, "not_refrigerator_example": {"Microlearning": 100, "Microlearning vaccines": 89, "Motivational interviewing": 100, "total": 100}, "bot_performance_good": {"Scenario": 92, "Microlearning": 96, "Microlearning vaccines": 85.5, "Motivational interviewing": 96, "Visit check in": 92.0, "total": 96}, "bot_performance_bad": {"Scenario": 96, "Microlearning": 96.0, "Microlearning vaccines": 87.5, "Motivational interviewing": 98.0, "Visit check in": 96.0, "Unknown": 87.0, "total": 96}, "coaching_good": {"Scenario": 96, "Microlearning": 100, "Motivational interviewing": 100.0, "Visit check in": 96, "total": 100}, "coaching_undetermined": {"Scenario": 92, "Microlearning": 100, "Motivational interviewing": 100.0, "Visit check in": 92.0, "total": 96.0}, "coaching_bad": {"Scenario": 96, "Microlearning": 92, "Motivational interviewing": 100, "Visit check in": 90.5, "total": 92}, "engagement_good": {"Scenario": 96.0, "Microlearning": 98.0, "Microlearning vaccines": 96.0, "Motivational interviewing": 100, "Visit check in": 96, "total": 96.0}, "engagement_bad": {"Scenario": 96.0, "Microlearning": 100.0, "Microlearning vaccines": 96, "Motivational interviewing": 100, "Visit check in": 92, "total": 96}, "user_knowledge_good": {"Scenario": 96.0, "Microlearning": 100.0, "Microlearning vaccines": 94.5, "Motivational interviewing": 100, "Visit check in": 96, "total": 100.0}, "user_knowledge_bad": {"Scenario": 100.0, "Microlearning": 100.0, "Motivational interviewing": 98.0, "Visit check in": 100, "total": 100}, "user_ai_response": {"Scenario": 92, "Microlearning": 96, "Microlearning vaccines": 82, "Motivational interviewing": 89, "Visit check in": 82, "total": 89}}};
+        
         // Tag combination data from server
         const tagCombinationData = {"Coaching bot V5": {"Microlearning": {"sessions": {"728e1207-99a3-4607-93e7-a8dcbc338525": ["safe", "bot_performance_bad", "coaching_good", "engagement_good"], "9b062780-3f29-4127-9fa2-06cfcb8682d8": ["safe", "acceptable", "bot_performance_good", "bot_performance_bad"], "6de899bb-fd6d-4688-bbbb-f0ef9e41e34c": ["safe", "bot_performance_bad"], "a2a271f6-4cd0-47ff-86fb-7df642d4e6e1": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "engagement_good"], "0488685c-0006-49ed-bbf6-b048130de3cc": ["safe", "acceptable", "bot_performance_good", "engagement_good", "user_knowledge_good"], "8ec35689-7bb8-46b6-b1eb-74e4e380daae": ["safe", "acceptable", "bot_performance_good", "engagement_good"], "cea7a902-bbcf-419a-b098-831ac9956756": ["safe", "acceptable", "bot_performance_bad", "engagement_good"], "0080a4c3-e230-454d-a9c2-2ece01d66137": ["safe", "acceptable", "bot_performance_bad", "engagement_good"], "0ad1e20d-f846-453b-aa3b-654085b7a698": ["safe", "bot_performance_bad"], "fd6782cb-8309-43f7-92f9-41fd3c6f002e": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "engagement_good"], "4727edc3-2210-450d-bea3-b0ab8e4af84b": ["safe", "bot_performance_bad"], "6ba8c7a5-78ef-438c-960b-55d734cc5303": ["bot_performance_good", "coaching_good"], "f8cad2a5-6fa1-492e-abc7-3c466b335664": ["safe", "acceptable", "refrigerator_example", "bot_performance_good"]}, "total_tagged": 13}, "Microlearning vaccines": {"sessions": {"4a1d9891-3d2a-40ef-8c59-656211095124": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "engagement_good"], "eefa5030-e32a-4236-a6a1-ff917d9c2832": ["safe", "acceptable", "not_refrigerator_example", "bot_performance_bad", "user_knowledge_good"], "afd049aa-b337-4f53-9936-a0d2acf909b1": ["bot_performance_bad"], "d6e94b2a-0036-469d-981a-3e30e51fbd00": ["safe", "bot_performance_bad"], "1c232f27-865f-4346-89b9-9da19dfe38d6": ["safe", "acceptable", "bot_performance_good"], "ca63b4b3-1860-4725-aa62-6b6631b8073d": ["safe", "acceptable", "refrigerator_example", "bot_performance_good"]}, "total_tagged": 6}, "Scenario": {"sessions": {"61618923-6b8d-48b1-8656-d3b482c91cb5": ["safe", "acceptable", "bot_performance_good", "engagement_good", "user_ai_response"], "483a1dd7-5c46-43d8-ad3f-59378151dc73": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "coaching_good", "engagement_good"], "1d989821-e0ba-4d21-bbf3-7bc1eba3b89b": ["safe", "acceptable", "bot_performance_good", "engagement_good", "user_ai_response"], "0796b1a7-f6ef-4a27-b48c-84aeb656304f": ["safe", "bot_performance_bad", "coaching_good", "engagement_good"], "5100f302-00c1-44ed-9541-752fb4caab0c": ["safe", "acceptable", "bot_performance_bad", "engagement_bad"], "5d285f1e-5ead-4470-9255-6e4058243598": ["safe", "acceptable", "bot_performance_good", "engagement_bad", "user_knowledge_good", "user_ai_response"], "553be4ef-69da-4ba3-99d3-51c2b4a94a4a": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "engagement_good"], "d644a37a-2d02-4e76-92a5-294d9e746947": ["safe", "acceptable", "bot_performance_good", "bot_performance_bad", "engagement_good"], "b05c3532-e524-49fb-9a6c-f8cb7f801935": ["user_ai_response"], "8b9218c3-b9b9-437b-ae63-4842bb5bf91c": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "coaching_good", "engagement_good"], "5507901d-dbb8-4082-9e9c-e19b81bbbbe1": ["safe", "refrigerator_example", "bot_performance_good", "engagement_good"], "206f1ca5-12b0-45f8-aec3-21e0e154cf65": ["safe", "acceptable", "bot_performance_good", "engagement_good", "user_knowledge_good"], "a516f8fc-ae98-49a5-b7aa-6ef2d5565a83": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "engagement_good", "user_knowledge_good"], "f9f67618-8e1d-4e91-87d1-f3a02b34f2de": ["safe", "refrigerator_example", "bot_performance_good", "engagement_good", "user_knowledge_good"], "069c9611-8b57-4509-928f-41e250e733e3": ["safe", "acceptable", "bot_performance_bad", "engagement_good"], "75b70f10-f04f-4f09-8811-3b2b90e886cb": ["bot_performance_bad", "engagement_good"], "b40b0af1-71b5-4b66-a91b-919ec800f7bf": ["bot_performance_good"], "aa45850d-4e4d-49b3-99fd-b859912ca0fd": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "coaching_good", "engagement_good"], "b606bc62-6f0d-4ffa-963a-34645f90d5d2": ["safe", "acceptable", "bot_performance_bad"], "65cd3076-933e-4a86-b17c-e4490fbdc91c": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "engagement_good"], "57b31ebc-ede9-443d-9fce-850a0be8ce5e": ["safe", "acceptable", "bot_performance_good", "bot_performance_bad", "engagement_good"], "4dbd8b67-d31b-49e8-9cc5-bb4f124a79b3": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "engagement_good"], "65f1a6a0-739a-436e-8742-35a6ae3235a1": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "engagement_bad"], "aa8a1bd8-4fe8-427c-8b2f-074e45003998": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "engagement_good", "user_knowledge_good"], "4495cd38-fd9b-4d17-9b11-2b60a34bbf81": ["safe", "acceptable", "bot_performance_good", "engagement_good", "user_knowledge_good"], "3eb4a070-1fb1-4ca6-9b41-8775f6cae5ea": ["safe", "acceptable", "bot_performance_bad", "engagement_good"]}, "total_tagged": 26}, "Motivational interviewing": {"sessions": {"dacec153-8d33-4d03-97c1-eddc280a4c17": ["safe", "acceptable", "bot_performance_good", "engagement_good"], "84c91268-6a27-4fab-98dc-6e075865a65d": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "coaching_good", "engagement_good", "user_knowledge_good"], "c8c7dd89-2727-4bb4-bf80-895d1e7cf767": ["safe", "acceptable", "bot_performance_good", "engagement_good"], "f3a18403-c504-47bc-ab51-b7f5b308a517": ["safe", "bot_performance_bad"], "c8b90836-98b5-453f-937a-169e2d211a30": ["safe", "bot_performance_bad"], "b5137f35-3bdf-41cd-a77f-bc31e81601fc": ["safe", "acceptable", "refrigerator_example", "bot_performance_good"], "30e6e594-26e8-4729-b3a7-fdbc69b44dba": ["safe", "acceptable", "bot_performance_good", "bot_performance_bad", "coaching_good"], "fc1813bc-dbbf-4de8-a16e-8cfa761aecdd": ["safe", "bot_performance_good", "bot_performance_bad"], "cace292e-dab5-4da6-b01c-85c3e1a6c0fa": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "engagement_good"]}, "total_tagged": 9}, "Visit check in": {"sessions": {"441416e1-3f3c-42bf-8df5-ec7c879ab1a7": ["safe", "acceptable", "bot_performance_good", "engagement_good", "user_ai_response"], "d7887b1c-de47-4173-a85c-59b63e2811da": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "engagement_good"], "38cad5fe-976e-4fc1-8673-24ec5ebc61bf": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "engagement_good"], "b14f7694-1dd6-4657-9b9c-1c3f1d5d9746": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "engagement_good", "user_knowledge_good"], "18766b0e-08b8-451d-891e-c8085f92ad00": ["safe", "acceptable", "bot_performance_bad", "engagement_good"], "4a88ee25-96cf-4371-bb26-c8e4c4613e7e": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "engagement_good"], "3260989a-9115-4b53-b0dd-863f4af7c434": ["safe", "acceptable", "bot_performance_good", "engagement_good"]}, "total_tagged": 7}}, "Coaching bot V4": {"Microlearning": {"sessions": {"ebd54272-a6f9-4b8d-ae42-22b3ac661256": ["safe", "bot_performance_good", "bot_performance_bad", "engagement_good"], "7e1afe64-0bda-481f-9475-bf27d3ae4fdd": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "coaching_good", "engagement_good", "user_knowledge_good"], "54241058-021b-49c0-8435-c63680f214c7": ["not_refrigerator_example", "bot_performance_bad"], "ceea76a1-45a5-4c90-8508-adef96185c05": ["safe", "acceptable", "bot_performance_bad", "coaching_good", "engagement_good"], "a5407fd9-fe98-475c-bb75-52526f165a1d": ["safe", "acceptable", "bot_performance_good", "coaching_good", "engagement_good", "engagement_bad", "user_knowledge_bad"], "1ab3771d-4de1-4f73-b6fa-db8e7e8dbee8": ["safe", "acceptable", "bot_performance_bad", "coaching_good", "coaching_undetermined", "engagement_good", "user_knowledge_good"], "7b8f5731-3293-4c5e-8414-51d40a73d61b": ["safe", "acceptable", "not_refrigerator_example", "bot_performance_bad", "coaching_good", "engagement_good", "user_knowledge_good"], "323c51c7-7178-4617-a9be-dbc6ed219d32": ["safe", "refrigerator_example", "bot_performance_bad", "coaching_good", "engagement_good"], "227c567d-e1b2-43b6-8f3a-169e7806a1d7": ["refrigerator_example", "coaching_good"], "afdf8dc4-d17c-411e-a45c-8ad65bb34494": ["refrigerator_example", "coaching_good"], "59fa5324-7f16-4676-8f8c-2f492da45f5d": ["safe", "acceptable", "bot_performance_good", "coaching_good", "engagement_good", "user_knowledge_bad"], "f57802f6-8b7e-41dc-9f27-3d1869acf33d": ["safe", "acceptable", "refrigerator_example", "coaching_good", "engagement_good", "engagement_bad", "user_knowledge_bad"], "687cd5a5-76b9-437f-b14c-a8eb7a43c8bf": ["safe", "acceptable", "coaching_good", "engagement_bad"], "6c1f2aef-da28-45cb-a148-63e74e5105e5": ["safe", "acceptable", "refrigerator_example", "coaching_good", "engagement_good", "user_knowledge_good"], "eeaa461e-8d04-4c2b-81c1-2bd5e27d3943": ["safe", "unacceptable", "bot_performance_bad"], "88643653-1405-40d6-b256-e07b91791a24": ["not_refrigerator_example", "bot_performance_bad"], "b3fd93de-1d71-45fc-8cec-bbcbb49c3d11": ["not_refrigerator_example"], "b12d4c52-a189-4db0-be64-ee4fa6950e56": ["safe", "bot_performance_bad"], "1fe44343-48cf-47af-8e7c-e7b8076c7ce1": ["refrigerator_example", "bot_performance_bad", "coaching_good", "coaching_bad"], "8bcf8f03-b10e-486c-919e-0eec63b28683": ["safe", "acceptable", "refrigerator_example", "bot_performance_good"], "e8d856aa-ed1a-4b85-b859-d647f7b4bd8f": ["safe", "refrigerator_example", "bot_performance_good", "coaching_good", "engagement_good", "user_knowledge_good"], "11f8f4cb-bf38-4c63-b2ed-4fbf13e39b24": ["refrigerator_example", "not_refrigerator_example", "bot_performance_good", "engagement_good"], "3f74844d-b4a8-410d-96a8-458e126c158a": ["safe", "acceptable", "refrigerator_example", "bot_performance_good"], "0e6e1b5e-9e6e-4c54-9a36-528f96672ef5": ["safe", "acceptable", "refrigerator_example", "coaching_good", "engagement_good", "user_knowledge_good"], "8301d29a-6a1e-4ee3-a9fa-af2305694e37": ["safe", "acceptable", "refrigerator_example", "coaching_good", "engagement_good", "user_knowledge_bad"], "6f4f6b17-54df-4fcd-8743-57a5d6e1d7ab": ["refrigerator_example", "not_refrigerator_example", "bot_performance_bad"], "176e9952-b33f-4b0e-a568-0adb71a97dac": ["refrigerator_example", "bot_performance_bad"], "adb69edd-4103-4ba2-b14f-0d05b860a711": ["safe", "acceptable", "bot_performance_bad", "coaching_good", "engagement_bad", "user_knowledge_good"], "72f3dae2-7b71-45b6-8c16-69f83452601b": ["safe", "bot_performance_bad"], "02627e61-4061-49e5-844d-e07cc6bf6aeb": ["safe", "acceptable", "coaching_good", "engagement_bad", "user_knowledge_bad", "user_ai_response"], "6f7b2a44-dd3b-45aa-9cde-a651ef7bf640": ["safe", "acceptable", "bot_performance_good", "bot_performance_bad"], "6f85c494-2838-42ed-9e6a-0d6d83a80a94": ["refrigerator_example"], "e90c64b1-d09b-42ec-9d06-2c092d5edd8d": ["safe", "acceptable", "refrigerator_example", "coaching_good", "engagement_good", "user_knowledge_good"], "ed808906-fdfb-4267-a154-156362d6497e": ["safe", "acceptable", "refrigerator_example", "coaching_good", "engagement_good", "user_knowledge_good"], "edf30345-2449-4be5-829a-8eaf43f441ad": ["safe", "unacceptable", "bot_performance_bad", "engagement_bad"], "0c9a444e-250b-4a90-9edf-3c321951df0f": ["refrigerator_example", "user_knowledge_good", "user_ai_response"], "2e202b1b-3ba1-4dd7-96e8-53ce3e86e070": ["safe", "acceptable", "refrigerator_example", "coaching_good"], "601f901a-e3eb-446e-ba9c-eee714ec3b37": ["safe", "bot_performance_bad"], "1150ce66-350d-4480-9eae-eb42990aefba": ["safe", "bot_performance_bad", "engagement_good"], "63a047ff-0359-450a-bece-ae89f0d6ff8b": ["bot_performance_bad"], "afa91f36-9089-4378-b704-339f04ab2c34": ["safe", "acceptable", "refrigerator_example", "coaching_good", "engagement_good"], "861258fa-15d1-4073-972e-d5973d00fa80": ["not_refrigerator_example"], "e41dba6d-848f-40b1-8c14-85e9cf4e089f": ["safe", "acceptable", "bot_performance_bad"], "db4cab12-b67d-4fdd-b009-75f89f164c8c": ["safe", "acceptable", "bot_performance_good", "bot_performance_bad", "coaching_good"], "007affcc-df0b-429d-a415-68b0676d3ef4": ["refrigerator_example"], "345ceee6-33f7-49af-83c7-3003c1425c3b": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "coaching_good", "engagement_good", "user_knowledge_bad"], "cdde5c8e-5db8-495a-96b6-b0e8013a9147": ["not_refrigerator_example", "bot_performance_bad"], "d2ea059f-518a-4e52-be68-bb9d1e311be5": ["safe", "bot_performance_good", "coaching_undetermined", "engagement_good", "user_knowledge_good"], "ab687d25-5178-42a1-9874-7a38132d477a": ["safe", "acceptable", "bot_performance_good", "coaching_good", "engagement_good", "user_knowledge_bad"], "44993b8e-fd43-42b7-8343-47c130e2dd8d": ["not_refrigerator_example"], "400a28ec-ff28-40fe-afb3-795d0ca78afd": ["refrigerator_example", "bot_performance_good", "coaching_good", "engagement_good", "user_knowledge_good"], "e3562954-0f83-4eb1-8b37-cca88f517bac": ["safe", "acceptable", "bot_performance_good", "coaching_undetermined", "engagement_good", "user_knowledge_good"], "20c97536-5c81-4182-b09d-5d3c7e3ced6e": ["refrigerator_example", "bot_performance_bad"], "7b9aabb1-a3d6-47c7-9d1d-dfb476dba41c": ["safe", "unacceptable", "refrigerator_example", "bot_performance_bad", "coaching_good", "engagement_good"], "23d4e927-352f-49cb-b1ac-a86568cae26e": ["not_refrigerator_example"], "9e1b259d-5f30-4d60-aa96-02d811e276dc": ["safe", "bot_performance_good", "engagement_good"], "abb7f8da-80cb-41f9-a415-22e7f9b0e85d": ["safe", "acceptable", "refrigerator_example", "bot_performance_bad", "coaching_good", "engagement_good", "user_knowledge_good"], "df502f3a-1e92-48ff-8af7-6ecfc12a0b74": ["refrigerator_example"], "beb4754d-059f-4207-9996-76dd02eadde2": ["safe", "acceptable", "bot_performance_bad"], "bc6028d0-fbb6-4f3a-ad1e-9e52f05264bb": ["safe", "acceptable", "not_refrigerator_example", "bot_performance_bad", "coaching_good", "engagement_good"], "2756ab52-7c08-43e2-b4d0-55f082a73099": ["bot_performance_bad"], "e8d477bb-13b4-48b0-8c5f-4cf649330ebe": ["refrigerator_example", "coaching_good"], "9cc6d20f-caff-48f5-9e5a-748d9695f76b": ["not_refrigerator_example"], "2e326c2b-2592-40b6-bacb-b20dbaa141d3": ["safe", "acceptable", "bot_performance_good", "bot_performance_bad"], "5b232191-5322-4def-b184-e2087bc98fe9": ["not_refrigerator_example"], "b0e109e3-d8b2-4ccf-a135-87432d652d86": ["safe", "acceptable", "bot_performance_good", "coaching_good"], "6b0db7b4-5d2e-4c32-bd29-cfe86ce6a33e": ["safe", "acceptable", "bot_performance_bad", "coaching_good", "engagement_bad", "user_knowledge_bad"], "60b35f38-d350-4b3d-be44-85a772eefdda": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "coaching_good", "user_knowledge_bad"], "835c8917-70bb-4ffb-a314-f1759f1e35ea": ["safe", "acceptable", "not_refrigerator_example", "coaching_undetermined", "engagement_bad", "user_knowledge_bad"], "871378a4-7dc0-4f1e-80a8-2646ebb57a6d": ["safe", "acceptable", "refrigerator_example", "bot_performance_bad", "coaching_good", "engagement_bad"], "5d973705-f4d6-4bea-9666-382eb2da5cc8": ["not_refrigerator_example", "bot_performance_bad"], "1e162a4c-2ab0-415f-ab85-02f398f00102": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "coaching_good", "engagement_good", "user_knowledge_good"], "16cf9905-e381-4521-9af3-07cb11cc3036": ["safe", "bot_performance_bad"], "bac6d36d-1c71-4f7e-b9dd-842bd2e524c5": ["safe", "acceptable", "bot_performance_bad", "engagement_good"], "293fe4fc-41f9-42d0-b4cf-2973c73421fa": ["safe", "acceptable", "bot_performance_good", "coaching_bad", "engagement_good", "user_knowledge_good"], "e4a1c05b-c285-463c-932c-53e7ebfc9493": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "coaching_good", "engagement_good", "user_knowledge_good"], "d9e0a709-f6da-45d2-955b-887ee3886a93": ["refrigerator_example", "coaching_good"], "b4595ada-e8f9-40ec-9003-60f9a911a80b": ["safe", "bot_performance_bad", "engagement_good"]}, "total_tagged": 78}, "Visit check in": {"sessions": {"92c1b331-3267-4baa-9638-363ec8447016": ["safe", "acceptable", "bot_performance_bad", "coaching_good", "engagement_bad"], "6c999bce-9288-436b-a5d2-ada3bc582fed": ["safe", "acceptable", "bot_performance_bad", "engagement_good"], "c8597aee-0a54-4991-b1cf-1bd394e31b12": ["safe", "acceptable", "bot_performance_good", "coaching_undetermined", "coaching_bad", "engagement_good", "user_knowledge_good"], "a5f13865-8b74-43cd-b58f-0f69ad75ff29": ["safe", "bot_performance_bad", "engagement_good"], "46caa74b-ca49-4818-b1bf-b8f4954bf2ec": ["safe", "bot_performance_good", "bot_performance_bad", "coaching_undetermined", "user_knowledge_bad"], "c89ad2c8-3bee-4059-86a4-e5d73e6a2534": ["bot_performance_bad", "coaching_undetermined"], "985c56dd-9989-43dd-97df-42eae1d6a7b8": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "engagement_good"], "2435c5fa-1ef3-4594-b9ba-078f77f6a493": ["safe", "acceptable", "coaching_good", "engagement_good", "user_knowledge_good"], "486930d8-271a-4262-a6c8-aa3c2be6113c": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "engagement_good"], "6b505178-06c0-4338-bc54-adb86069329c": ["safe", "acceptable", "bot_performance_good", "bot_performance_bad", "coaching_good", "engagement_good", "engagement_bad", "user_knowledge_good"], "0e249b41-0ac7-4403-94c3-023e56b49443": ["safe", "bot_performance_good", "bot_performance_bad", "engagement_good"], "f2171559-5caa-469f-90a4-155ac23d78a8": ["safe", "acceptable", "coaching_good", "engagement_good", "user_knowledge_good"], "ae3c5086-f18b-479b-92de-a49d87962c3b": ["safe", "bot_performance_good", "bot_performance_bad", "engagement_good"], "529328b9-c0db-4112-8f01-5c3f94cec2f4": ["safe", "acceptable", "coaching_undetermined", "engagement_good", "user_knowledge_good"], "5502cb91-edff-4432-973e-c3b4c1073583": ["safe", "unacceptable", "bot_performance_good", "bot_performance_bad", "coaching_good", "engagement_good", "user_knowledge_good"], "48ea02f4-e418-40dd-a593-6751dc9ba1c4": ["safe", "acceptable", "bot_performance_good", "coaching_bad", "engagement_bad"], "d5bd4ee0-3892-4b61-8e38-beccf67ba405": ["safe", "acceptable", "bot_performance_bad"], "e43bd195-efd7-483e-a735-dbecd7e52faf": ["safe", "bot_performance_good", "coaching_undetermined"], "1af17384-e270-4205-9ac8-e069b75c677e": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "bot_performance_bad", "coaching_good", "engagement_good", "user_knowledge_good"]}, "total_tagged": 19}, "Motivational interviewing": {"sessions": {"3d876476-fd44-4c83-961b-f2e5bf0e4068": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "coaching_good", "engagement_good", "user_knowledge_good"], "200d3383-1ed6-452b-b972-cf94904359fa": ["safe", "acceptable", "bot_performance_good", "bot_performance_bad", "coaching_undetermined", "engagement_good", "user_knowledge_good"], "4535e9ec-2edb-4953-af0d-7b4a3478855b": ["safe", "acceptable", "not_refrigerator_example", "bot_performance_bad", "coaching_undetermined", "engagement_good", "user_knowledge_good"], "b8f39ed5-3271-4279-acf7-b1143c3d78b9": ["safe", "acceptable", "coaching_good", "engagement_good", "user_knowledge_good"], "5cb24185-a818-448e-bb67-d9784ae12b0a": ["bot_performance_bad"], "89224be1-517c-442f-ad77-93c9bab4f02b": ["safe", "acceptable", "not_refrigerator_example", "bot_performance_bad", "coaching_undetermined", "engagement_good", "user_knowledge_good"], "7545f09b-f0df-4e1a-bf88-f8a39c712f1a": ["safe", "bot_performance_good", "engagement_good"], "29354e82-e842-4b93-bdcc-3f23fb96da38": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "coaching_good", "engagement_good", "user_knowledge_good"], "e0e74251-c2d5-4876-a054-6b90546d8ffe": ["safe", "acceptable", "bot_performance_good", "bot_performance_bad", "coaching_good", "engagement_good", "user_knowledge_good"], "68c51cb9-dbcf-461a-87fc-aba58c064d4b": ["safe", "unacceptable", "bot_performance_bad", "coaching_undetermined", "engagement_bad", "user_knowledge_bad"], "db7f4f40-23f1-417a-b5b5-47026f7026fd": ["safe", "acceptable", "bot_performance_bad", "coaching_good", "engagement_good", "user_knowledge_good"], "71996b61-319c-409f-9182-6c7d10a7a3fd": ["safe", "acceptable", "bot_performance_good", "bot_performance_bad", "engagement_good"], "08c8ead3-04a0-41e3-ad06-b40edc1e6a90": ["safe", "unacceptable", "bot_performance_bad", "user_ai_response"], "36432be5-ad64-41ca-95af-0c4aa8346080": ["safe", "acceptable", "bot_performance_bad"], "2affd0c3-e0ed-456d-8788-61bb6e61a089": ["safe", "acceptable", "bot_performance_good", "coaching_bad", "engagement_bad"], "b233eee5-4465-454f-8687-a15f58962c49": ["safe", "unacceptable", "coaching_good", "engagement_good", "user_knowledge_good"], "9119e707-53e8-4ba0-9301-5c6d768b1f96": ["safe", "acceptable", "not_refrigerator_example", "coaching_undetermined", "engagement_good", "engagement_bad", "user_knowledge_good"], "bd137538-c286-482d-b2bd-645a7d541697": ["safe", "bot_performance_good", "coaching_undetermined", "engagement_bad", "user_knowledge_bad"], "eb2e147c-ad2d-4aff-ab2f-04546b9dbb41": ["safe", "acceptable", "bot_performance_bad"], "e4f12bf9-4f8f-476f-b83c-a86683316841": ["safe", "unacceptable", "bot_performance_bad", "coaching_undetermined", "engagement_bad", "user_knowledge_good"], "ceb1a547-2652-4a84-9672-dc2dd41f129b": ["safe", "acceptable", "bot_performance_bad", "engagement_good"], "9f7510e8-fa13-4417-a8ae-50753c294fac": ["safe", "acceptable", "refrigerator_example", "coaching_good", "engagement_good", "user_knowledge_good"], "ac8ae76b-69f9-439f-a6ef-492f11827748": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "engagement_good", "user_knowledge_good"], "ff9686cc-2e9f-4fcb-afce-6397d963df47": ["safe", "acceptable", "bot_performance_bad", "coaching_good", "engagement_good", "user_knowledge_good"], "602aeb42-1631-4600-a30a-6688e8e185b9": ["safe", "acceptable", "refrigerator_example", "bot_performance_bad", "coaching_good", "engagement_good", "user_knowledge_good"], "9970b78c-018a-4738-8ad9-ff7e2efbabe7": ["bot_performance_good", "bot_performance_bad", "coaching_good"], "26585a2a-6f6d-435a-b125-eb6bfeb68208": ["safe", "bot_performance_good", "coaching_undetermined", "engagement_good", "user_knowledge_good"]}, "total_tagged": 27}, "Scenario": {"sessions": {"8c008ab4-d68a-4dd4-9ce2-d55be0d0f7bf": ["safe", "acceptable", "bot_performance_bad", "coaching_good", "coaching_bad"], "79f74129-d9ac-4250-9ce2-dc936f3e5aa4": ["safe", "acceptable", "coaching_good", "engagement_bad", "user_knowledge_bad"], "bc4dc7cb-f554-4b76-990c-7d0228773d1c": ["safe", "acceptable", "bot_performance_bad"], "b9d1c8b6-a413-4af2-aeed-4b22446af18c": ["safe", "bot_performance_good", "engagement_good"], "138741a9-8c8c-4aa9-b414-dff9d66e2819": ["safe", "acceptable", "refrigerator_example", "bot_performance_bad", "engagement_good"], "99e5be23-eb33-4d47-905f-a2dc204d88ad": ["safe", "acceptable", "coaching_good", "engagement_good", "user_knowledge_good"], "051f16bb-93c5-4574-9445-283219e21812": ["safe", "acceptable", "bot_performance_good", "coaching_undetermined", "engagement_good", "user_knowledge_good"], "f68bedca-3450-406f-bca2-a1d960b50f7b": ["safe", "bot_performance_good", "bot_performance_bad", "engagement_good"], "69b2fd60-f996-4642-afff-a75aa187c092": ["safe", "bot_performance_bad"], "39e3a68c-aa0c-4280-a63f-8962588cc524": ["engagement_good"], "329e911f-b10f-45ff-ac42-6883a66bb83f": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "coaching_good", "engagement_good", "user_knowledge_good"], "c26a5833-bc1f-4b36-95fa-49272436e640": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "bot_performance_bad", "coaching_good", "engagement_good", "user_knowledge_good"], "8e5270a6-2763-46cd-85ba-1c7597ddfbc1": ["safe", "acceptable", "bot_performance_bad", "coaching_undetermined", "engagement_bad", "user_knowledge_bad"], "5eb4e32a-a9d6-42fc-98f4-ef5b22d007ac": ["safe", "acceptable", "refrigerator_example", "coaching_good", "engagement_good", "user_knowledge_good"], "6d3d0b1e-9714-4226-8a98-c35dc3d79511": ["safe", "acceptable", "bot_performance_good", "coaching_good", "engagement_good", "user_knowledge_good"], "91f0fb27-838a-4935-ba02-489b22cd7357": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "bot_performance_bad", "coaching_good", "engagement_good", "user_knowledge_good"], "af8a550b-4d3d-46aa-9986-2150f284c13a": ["safe", "unacceptable", "bot_performance_good", "bot_performance_bad"], "6d3a3fb1-9160-4a60-b854-d73c8e0b20c7": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "coaching_good"], "3a42fa31-35dd-4bdb-a870-fd4acc0d591a": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "coaching_good", "engagement_good", "user_knowledge_good"], "a96e39ed-e036-41f1-a790-d6eb1e2649f6": ["safe", "acceptable", "bot_performance_bad", "coaching_good", "engagement_good", "user_knowledge_good"], "3666e726-ac4c-4256-b67f-e8e187a1d74d": ["safe", "bot_performance_good", "bot_performance_bad", "engagement_good"], "6a7b7f41-d510-419e-b486-0f58e4d64327": ["safe", "bot_performance_good", "engagement_good", "user_ai_response"], "3ab5d36a-07af-4dcb-83ce-ff13aa06bd84": ["safe", "acceptable", "bot_performance_bad", "coaching_bad", "engagement_good", "user_knowledge_good"], "9d462908-3cf1-420b-a47d-a539fa099dfd": ["safe", "bot_performance_bad"], "14c0e4cb-cbce-4b4c-97b4-a648f33785f6": ["safe", "acceptable", "bot_performance_good", "bot_performance_bad", "engagement_good"], "d98e0127-5ef6-474a-92a7-198e69ef9cef": ["safe", "acceptable", "bot_performance_good", "coaching_good", "engagement_bad", "user_knowledge_good"], "f86af8b9-befd-4c43-809b-d4a3501f50b3": ["safe", "acceptable", "engagement_good"], "15923063-988c-4c72-9fef-54159937a034": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "coaching_good", "engagement_good", "user_knowledge_good"], "3b8d7cf4-e381-4e3a-8036-228261c21d39": ["safe", "bot_performance_bad", "user_ai_response"], "ef1ab5b6-e3d4-4b01-97ca-b4143eed4ebc": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "coaching_good"], "f24dcc04-7dc9-4d10-a925-56d753badcea": ["safe", "bot_performance_good", "engagement_good"], "90951106-0eb7-42ef-b7eb-228a79429cac": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "engagement_good"], "71dec6f9-c119-45fb-81b5-a77beda6fbc0": ["bot_performance_bad"], "1b673e5a-7713-4a04-9d70-4ee9800ca420": ["safe", "acceptable", "coaching_good", "engagement_bad", "user_knowledge_bad"], "c105e216-97d7-4448-8d92-e99dc8bef707": ["safe", "acceptable", "refrigerator_example", "coaching_good", "engagement_good", "user_knowledge_good"], "2c3a779f-e378-4669-aec6-2b622e38c060": ["safe", "acceptable", "bot_performance_good", "coaching_good", "engagement_bad", "user_knowledge_good"], "95565b0d-783d-467c-85e9-0d7eccbca31c": ["safe", "acceptable", "refrigerator_example", "coaching_good", "engagement_good", "user_knowledge_good"], "97c9f824-d398-4daf-aaf0-642411442a6c": ["safe", "acceptable", "bot_performance_good", "bot_performance_bad", "coaching_bad", "engagement_bad", "user_knowledge_bad"], "a88efce8-ee4d-4a2f-b76b-7232ffa2cbee": ["safe", "bot_performance_good", "bot_performance_bad", "coaching_undetermined", "engagement_bad", "user_knowledge_bad"], "07ba7a75-4059-45c5-92fa-5f3ab43848fb": ["safe", "bot_performance_good", "bot_performance_bad"], "d8515a8a-8806-4e72-b7d9-cee8e9754894": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "coaching_undetermined", "engagement_good", "engagement_bad", "user_knowledge_good", "user_knowledge_bad"], "86c96eaf-098b-4b55-9239-1bf3120b5265": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "coaching_good", "engagement_good", "user_knowledge_good"], "b11ba0e4-5abb-4cbb-a8f9-12b2f8b61549": ["safe", "refrigerator_example", "bot_performance_good", "engagement_good"]}, "total_tagged": 43}, "Unknown": {"sessions": {"d0890dae-0d55-4580-b1e0-9b82e6b74c5c": ["safe"], "707c626d-f3a9-49b9-addb-2e4cd6b3dc6f": ["safe"], "6289dde9-ea9e-4ccc-bd03-10b3e761d8b4": ["safe"]}, "total_tagged": 3}}, "Coaching bot V3": {"Scenario": {"sessions": {"a1a35395-0b9b-4764-807c-b197123dfd7a": ["bot_performance_bad", "coaching_good", "coaching_undetermined"], "6b104cd2-5516-48db-bb0f-b7f076470c6e": ["bot_performance_good", "bot_performance_bad", "coaching_good"], "34453b6b-b0f4-4b2b-81e0-3ddf1faf42f1": ["safe", "bot_performance_good", "coaching_undetermined", "engagement_good"], "1c8cd563-6fed-44b2-b801-dcec395f50c4": ["safe", "bot_performance_good", "bot_performance_bad", "coaching_undetermined"], "ffc58361-f6ee-4f54-9b73-143bac5454d7": ["safe", "bot_performance_good", "bot_performance_bad", "coaching_undetermined", "engagement_good"], "b4cfdf97-985d-4aae-9a3d-f10bd8166416": ["bot_performance_good", "bot_performance_bad", "engagement_good"], "b8371a40-6f30-4551-a2ca-6efbf729fcc5": ["safe", "bot_performance_good", "coaching_good", "engagement_good"], "c3fcd7cc-e9b0-442e-822c-1aad1c0eeef4": ["safe", "bot_performance_bad", "coaching_good"], "07738278-f8f4-404d-9fda-0e61529ffbf6": ["bot_performance_bad", "engagement_bad"], "208a30cb-5234-42c7-b68a-b03644a2691e": ["safe", "bot_performance_good", "coaching_good", "engagement_good"], "01cd5ec4-d733-4a25-a2a4-0b1c5da1dda2": ["bot_performance_good", "bot_performance_bad", "engagement_good", "user_knowledge_good"], "0257f699-7c79-43e8-b191-c850ffe43ef2": ["user_ai_response"], "c0fabc0b-1b50-4298-8edf-588f2ad639ca": ["safe", "bot_performance_good", "coaching_good"], "b03e6f0c-4e5e-4cf3-baa4-bb67a0f72a62": ["safe", "bot_performance_bad", "coaching_undetermined"], "f898b9ab-6b8b-480b-8cc1-6a9a3dd537bf": ["safe", "bot_performance_good", "coaching_good", "engagement_good"], "4e0e2401-68cb-441c-a990-6d041fc47873": ["safe", "bot_performance_good", "coaching_undetermined"], "9832c5d4-a0db-4d79-bfcf-ef36623574eb": ["bot_performance_good"], "f6ee0a99-d50f-4e14-b484-68a3811bd50c": ["bot_performance_good", "coaching_good", "engagement_good", "user_knowledge_good"], "e47c3de0-b4b4-4e6e-a835-ace110a3b63c": ["safe", "bot_performance_bad", "coaching_good", "engagement_good"], "4608ca57-d88f-4f71-8387-652c57eaeec5": ["bot_performance_good", "coaching_good"], "bdfacca1-f40f-4313-9be2-1d059d839e81": ["bot_performance_good", "bot_performance_bad", "coaching_undetermined"], "f519d138-ee55-4b85-90ef-1340180081ed": ["safe", "bot_performance_good", "coaching_undetermined"], "32808fef-3579-42bc-93e7-471eb7a380bc": ["safe", "bot_performance_bad"], "46d50c00-11e7-4464-af77-c7c93019262b": ["bot_performance_good", "bot_performance_bad"], "33dbc1f0-29f0-4f68-92d0-3ebd2b928a97": ["safe", "bot_performance_good", "bot_performance_bad", "coaching_good"], "19e0af4a-58ea-4687-a7d7-17c57890d3bb": ["bot_performance_bad", "engagement_bad"], "96fd84ad-0c63-41df-b4cd-0a808dbca9d4": ["bot_performance_bad"], "41c065e7-7257-4755-a54f-89128e405f36": ["bot_performance_bad", "engagement_bad"], "5ed3e8bf-fb34-48fa-8403-5d6eef7c174f": ["bot_performance_good", "bot_performance_bad"], "883f4c95-5606-408f-961f-a951e327d317": ["safe", "bot_performance_good", "bot_performance_bad", "coaching_good"], "985740af-f906-4680-a7fa-1e0b08bcd02c": ["bot_performance_good", "coaching_good", "engagement_good"], "8d5b5b8e-58c2-4e29-8a7a-d9392bd39050": ["bot_performance_good", "coaching_undetermined"], "50d9e54e-ce2f-47aa-97db-5f17134ed4d6": ["bot_performance_good", "coaching_good"], "bc27ef85-f4a8-40d6-ad82-d9ae9561c5e8": ["safe", "bot_performance_good", "coaching_good", "engagement_good"], "96418c7f-7a84-413f-996a-c0304915e969": ["bot_performance_good", "coaching_good", "engagement_good"], "641be780-15a2-43c0-b452-8ac7f80534ac": ["bot_performance_good", "coaching_good"], "7579cda2-c009-4df8-a96b-efa40795bf35": ["bot_performance_bad", "coaching_good"], "7c68bb1c-9904-48d8-b278-396f54684564": ["bot_performance_bad", "engagement_bad"], "ff5c5960-d5b1-495a-be16-4fdc067a8e07": ["bot_performance_bad", "engagement_good"], "7fca8511-797c-4514-b472-ec9abe2b06db": ["safe", "coaching_undetermined"], "28ad24f5-0650-4d05-956e-f0ea7a0ca47d": ["bot_performance_good", "engagement_bad"], "48f17139-fda9-4f2f-a526-157b8b7259e5": ["bot_performance_good", "coaching_good", "engagement_good"], "000a48d9-d6f2-43c1-9fa7-91111cd7a629": ["safe", "bot_performance_good", "coaching_undetermined"], "22f43a4f-8d76-4bc4-9de9-da40d13d46af": ["bot_performance_good", "coaching_undetermined", "engagement_bad"], "78d8d0e9-207f-4423-bc76-ed503df20457": ["bot_performance_good", "bot_performance_bad", "engagement_good", "user_knowledge_good"], "1d88789c-1fd8-4135-9891-38d9ba52f5b5": ["bot_performance_good", "coaching_undetermined", "engagement_good"], "0905a649-aed0-4223-90dd-e684b7fd8db4": ["bot_performance_good", "bot_performance_bad", "engagement_good", "user_knowledge_good"], "154f05bc-c7e7-4fa7-a297-cae1611c06fc": ["bot_performance_good", "bot_performance_bad", "coaching_bad", "engagement_bad"], "b1bb05b7-21ba-4135-bca4-72897cc39d3e": ["bot_performance_good", "coaching_undetermined"], "a029c371-7073-44e6-928d-55e8bebe1524": ["bot_performance_good"], "03acfebc-33f1-4eb8-8b40-b82f62e9fd0c": ["bot_performance_good", "bot_performance_bad", "user_knowledge_good"], "0d60e237-e3e2-4bf4-9431-8097ffec3e9b": ["user_ai_response"], "bd731107-1ac5-4e0f-bd69-50549f78e6d8": ["safe", "bot_performance_bad", "coaching_undetermined", "engagement_good"], "2864451f-b80c-4c35-879d-39f27254a310": ["safe", "bot_performance_good", "coaching_good"], "7fd0f0c4-fb73-4726-b41a-8e3b5fba6d26": ["user_knowledge_good", "user_knowledge_bad"], "4be5c20c-bfbb-4194-8b08-811e46d4d114": ["safe", "bot_performance_good", "coaching_undetermined"], "2e819167-41ff-4fa4-9c10-e136acee734e": ["bot_performance_bad", "engagement_bad"]}, "total_tagged": 57}, "Visit check in": {"sessions": {"a0cac2e8-d8f2-4765-ac6d-53ea5304f84a": ["bot_performance_bad"], "5445c6bc-1ff4-4dda-acea-3f6cb405ffeb": ["bot_performance_good", "bot_performance_bad", "coaching_undetermined", "engagement_bad"], "ead69855-5bc7-44c7-bdc7-8fa45efac657": ["bot_performance_good", "coaching_good", "engagement_good"], "183236ce-e0ea-4a30-a435-dd7f37fe93cb": ["safe", "bot_performance_good", "bot_performance_bad", "coaching_good"], "9f0f559f-9c29-4b20-9ccf-676f58f7ec92": ["bot_performance_bad", "coaching_undetermined"], "faffe0ed-52f1-451d-bb80-0b19aabbe591": ["bot_performance_good", "bot_performance_bad", "engagement_good", "user_knowledge_good"], "18204415-8416-4f9e-afeb-5f148a2f54f7": ["safe", "bot_performance_good", "coaching_good", "engagement_good"], "29aa2efe-b58b-4d90-863c-c1c4f73145fc": ["bot_performance_good", "bot_performance_bad", "coaching_undetermined", "coaching_bad", "engagement_bad"], "b3cf8321-82b0-46ff-99de-46ffe14a8b9b": ["bot_performance_bad", "user_ai_response"], "d5831774-c899-4394-8142-85e66b442a01": ["bot_performance_bad", "coaching_undetermined", "engagement_bad"], "8ba157bf-9b72-44f1-9137-820fadc951dc": ["bot_performance_good", "coaching_good"], "f00eb8d8-99ba-48cd-a692-f82c92269a0e": ["bot_performance_good", "bot_performance_bad", "user_ai_response"], "18fe0fd5-de39-412b-9efa-1ba7773657a2": ["bot_performance_good", "engagement_bad"], "93285e55-0f66-4d08-9d42-d7f647391a9f": ["bot_performance_good", "bot_performance_bad", "coaching_undetermined", "engagement_good"], "21d63215-863f-46be-988a-6c9e33bde441": ["bot_performance_good", "coaching_undetermined", "engagement_good", "user_knowledge_good"], "426a4607-9453-4b22-87d2-809af7cc0ab3": ["safe", "bot_performance_good", "engagement_good"], "a21feec3-ab71-42cd-9d14-7aef43a21d6e": ["bot_performance_good", "bot_performance_bad", "coaching_good"], "8c42423f-fe09-485e-974d-a4c237c06742": ["bot_performance_bad", "engagement_bad"], "5ab037d3-999e-421f-88e5-7a7d6e11f39b": ["bot_performance_bad", "engagement_bad"], "f1ace4ca-b5af-4c46-9f95-ad56001141c9": ["bot_performance_bad"], "e37d8aa9-6800-42a3-b3be-7175412ccdaa": ["bot_performance_good", "bot_performance_bad", "engagement_bad"], "9336bf46-7426-4590-85bd-13b04ecaa77f": ["bot_performance_good", "bot_performance_bad", "coaching_undetermined"], "56b4513f-2ea6-4427-bbe3-03e40fd58dd0": ["bot_performance_bad", "coaching_undetermined", "coaching_bad", "engagement_good"]}, "total_tagged": 23}}, "Coaching bot V6": {"Microlearning": {"sessions": {"61fbffe3-750d-4af2-a206-45bb6f31898f": ["safe"], "39c7af15-ad86-4a6e-94d4-b796d72474e0": ["bot_performance_bad"], "86c2531f-2486-4e68-a618-e15b5a833603": ["bot_performance_bad", "engagement_good", "engagement_bad", "user_knowledge_good"], "8875010c-7b7a-4a1e-afd6-7a7b7f3d9a01": ["bot_performance_bad"]}, "total_tagged": 4}, "Motivational interviewing": {"sessions": {"f6e30ea9-3746-40f8-b795-99d12ba77d16": ["refrigerator_example", "bot_performance_good", "engagement_good"], "ca65da47-ac8f-40b5-b0fa-ee232ee46498": ["refrigerator_example", "bot_performance_good", "engagement_good"], "31fdcefc-e4a0-4aa7-975b-0bbcf9e4831f": ["refrigerator_example", "bot_performance_good", "engagement_good", "user_knowledge_good"], "e49bed5e-6380-422c-addd-d64a4c776665": ["refrigerator_example", "bot_performance_good", "engagement_good", "user_knowledge_good"], "ca1e5365-ef86-4b08-aa07-aef6ec8e74f7": ["safe", "acceptable", "refrigerator_example", "coaching_good", "user_knowledge_good"]}, "total_tagged": 5}, "Visit check in": {"sessions": {"09413fcc-2ac3-4d7a-804d-9104a16606c8": ["safe", "acceptable", "coaching_good", "user_knowledge_good"]}, "total_tagged": 1}, "Microlearning vaccines": {"sessions": {"b39237ce-af83-41d3-a40b-60177ed10999": ["bot_performance_bad"], "a5eff9cd-dee5-49f9-9a6c-d02e6b3eb96c": ["refrigerator_example", "bot_performance_good", "engagement_good"], "9d3a36e2-fc12-429d-9bc3-8ea103f03f1c": ["bot_performance_good", "user_ai_response"], "bff5aaec-df21-433e-b633-42a174e16479": ["bot_performance_bad"], "a56a269c-d15d-40f2-bccb-ec8955acaf75": ["bot_performance_bad", "engagement_good", "user_knowledge_good"], "5f141291-379b-43d1-b2c0-6a8fba4e6597": ["safe", "acceptable", "refrigerator_example", "engagement_bad"], "09570275-0ae0-48ab-95aa-7c81f766ad56": ["refrigerator_example", "bot_performance_good", "engagement_good"]}, "total_tagged": 7}}, "Control bot": {"Unknown": {"sessions": {"58cf04c4-edcb-4f8a-bd43-14763cb017c5": ["bot_performance_bad"], "c696bdf6-1be1-4d41-9e30-50becdd094ef": ["bot_performance_bad"]}, "total_tagged": 2}}};
+        
+        // Tag combination GS data from server
+        const tagCombinationGSData = {"Coaching bot V5": {"Microlearning": {"sessions": {"728e1207-99a3-4607-93e7-a8dcbc338525": ["safe", "bot_performance_bad", "coaching_good", "engagement_good"], "9b062780-3f29-4127-9fa2-06cfcb8682d8": ["safe", "acceptable", "bot_performance_good", "bot_performance_bad"], "6de899bb-fd6d-4688-bbbb-f0ef9e41e34c": ["safe", "bot_performance_bad"], "a2a271f6-4cd0-47ff-86fb-7df642d4e6e1": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "engagement_good"], "8ec35689-7bb8-46b6-b1eb-74e4e380daae": ["safe", "acceptable", "bot_performance_good", "engagement_good"], "cea7a902-bbcf-419a-b098-831ac9956756": ["safe", "acceptable", "bot_performance_bad", "engagement_good"], "0080a4c3-e230-454d-a9c2-2ece01d66137": ["safe", "acceptable", "bot_performance_bad", "engagement_good"], "0ad1e20d-f846-453b-aa3b-654085b7a698": ["safe", "bot_performance_bad"], "fd6782cb-8309-43f7-92f9-41fd3c6f002e": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "engagement_good"], "4727edc3-2210-450d-bea3-b0ab8e4af84b": ["safe", "bot_performance_bad"], "6ba8c7a5-78ef-438c-960b-55d734cc5303": ["bot_performance_good", "coaching_good"], "f8cad2a5-6fa1-492e-abc7-3c466b335664": ["safe", "acceptable", "refrigerator_example", "bot_performance_good"]}, "gs_scores": {"728e1207-99a3-4607-93e7-a8dcbc338525": 57, "9b062780-3f29-4127-9fa2-06cfcb8682d8": 89, "6de899bb-fd6d-4688-bbbb-f0ef9e41e34c": 89, "a2a271f6-4cd0-47ff-86fb-7df642d4e6e1": 89, "8ec35689-7bb8-46b6-b1eb-74e4e380daae": 92, "cea7a902-bbcf-419a-b098-831ac9956756": 82, "0080a4c3-e230-454d-a9c2-2ece01d66137": 96, "0ad1e20d-f846-453b-aa3b-654085b7a698": 78, "fd6782cb-8309-43f7-92f9-41fd3c6f002e": 82, "4727edc3-2210-450d-bea3-b0ab8e4af84b": 85, "6ba8c7a5-78ef-438c-960b-55d734cc5303": 92, "f8cad2a5-6fa1-492e-abc7-3c466b335664": 85}, "total_tagged": 12}, "Microlearning vaccines": {"sessions": {"4a1d9891-3d2a-40ef-8c59-656211095124": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "engagement_good"], "eefa5030-e32a-4236-a6a1-ff917d9c2832": ["safe", "acceptable", "not_refrigerator_example", "bot_performance_bad", "user_knowledge_good"], "afd049aa-b337-4f53-9936-a0d2acf909b1": ["bot_performance_bad"], "d6e94b2a-0036-469d-981a-3e30e51fbd00": ["safe", "bot_performance_bad"], "1c232f27-865f-4346-89b9-9da19dfe38d6": ["safe", "acceptable", "bot_performance_good"], "ca63b4b3-1860-4725-aa62-6b6631b8073d": ["safe", "acceptable", "refrigerator_example", "bot_performance_good"]}, "gs_scores": {"4a1d9891-3d2a-40ef-8c59-656211095124": 96, "eefa5030-e32a-4236-a6a1-ff917d9c2832": 89, "afd049aa-b337-4f53-9936-a0d2acf909b1": 85, "d6e94b2a-0036-469d-981a-3e30e51fbd00": 86, "1c232f27-865f-4346-89b9-9da19dfe38d6": 89, "ca63b4b3-1860-4725-aa62-6b6631b8073d": 53}, "total_tagged": 6}, "Scenario": {"sessions": {"61618923-6b8d-48b1-8656-d3b482c91cb5": ["safe", "acceptable", "bot_performance_good", "engagement_good", "user_ai_response"], "483a1dd7-5c46-43d8-ad3f-59378151dc73": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "coaching_good", "engagement_good"], "1d989821-e0ba-4d21-bbf3-7bc1eba3b89b": ["safe", "acceptable", "bot_performance_good", "engagement_good", "user_ai_response"], "0796b1a7-f6ef-4a27-b48c-84aeb656304f": ["safe", "bot_performance_bad", "coaching_good", "engagement_good"], "5100f302-00c1-44ed-9541-752fb4caab0c": ["safe", "acceptable", "bot_performance_bad", "engagement_bad"], "5d285f1e-5ead-4470-9255-6e4058243598": ["safe", "acceptable", "bot_performance_good", "engagement_bad", "user_knowledge_good", "user_ai_response"], "553be4ef-69da-4ba3-99d3-51c2b4a94a4a": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "engagement_good"], "d644a37a-2d02-4e76-92a5-294d9e746947": ["safe", "acceptable", "bot_performance_good", "bot_performance_bad", "engagement_good"], "b05c3532-e524-49fb-9a6c-f8cb7f801935": ["user_ai_response"], "8b9218c3-b9b9-437b-ae63-4842bb5bf91c": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "coaching_good", "engagement_good"], "5507901d-dbb8-4082-9e9c-e19b81bbbbe1": ["safe", "refrigerator_example", "bot_performance_good", "engagement_good"], "206f1ca5-12b0-45f8-aec3-21e0e154cf65": ["safe", "acceptable", "bot_performance_good", "engagement_good", "user_knowledge_good"], "a516f8fc-ae98-49a5-b7aa-6ef2d5565a83": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "engagement_good", "user_knowledge_good"], "f9f67618-8e1d-4e91-87d1-f3a02b34f2de": ["safe", "refrigerator_example", "bot_performance_good", "engagement_good", "user_knowledge_good"], "069c9611-8b57-4509-928f-41e250e733e3": ["safe", "acceptable", "bot_performance_bad", "engagement_good"], "b40b0af1-71b5-4b66-a91b-919ec800f7bf": ["bot_performance_good"], "aa45850d-4e4d-49b3-99fd-b859912ca0fd": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "coaching_good", "engagement_good"], "b606bc62-6f0d-4ffa-963a-34645f90d5d2": ["safe", "acceptable", "bot_performance_bad"], "65cd3076-933e-4a86-b17c-e4490fbdc91c": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "engagement_good"], "57b31ebc-ede9-443d-9fce-850a0be8ce5e": ["safe", "acceptable", "bot_performance_good", "bot_performance_bad", "engagement_good"], "4dbd8b67-d31b-49e8-9cc5-bb4f124a79b3": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "engagement_good"], "65f1a6a0-739a-436e-8742-35a6ae3235a1": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "engagement_bad"], "aa8a1bd8-4fe8-427c-8b2f-074e45003998": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "engagement_good", "user_knowledge_good"], "3eb4a070-1fb1-4ca6-9b41-8775f6cae5ea": ["safe", "acceptable", "bot_performance_bad", "engagement_good"]}, "gs_scores": {"61618923-6b8d-48b1-8656-d3b482c91cb5": 85, "483a1dd7-5c46-43d8-ad3f-59378151dc73": 78, "1d989821-e0ba-4d21-bbf3-7bc1eba3b89b": 89, "0796b1a7-f6ef-4a27-b48c-84aeb656304f": 82, "5100f302-00c1-44ed-9541-752fb4caab0c": 96, "5d285f1e-5ead-4470-9255-6e4058243598": 92, "553be4ef-69da-4ba3-99d3-51c2b4a94a4a": 89, "d644a37a-2d02-4e76-92a5-294d9e746947": 92, "b05c3532-e524-49fb-9a6c-f8cb7f801935": 92, "8b9218c3-b9b9-437b-ae63-4842bb5bf91c": 89, "5507901d-dbb8-4082-9e9c-e19b81bbbbe1": 96, "206f1ca5-12b0-45f8-aec3-21e0e154cf65": 78, "a516f8fc-ae98-49a5-b7aa-6ef2d5565a83": 89, "f9f67618-8e1d-4e91-87d1-f3a02b34f2de": 92, "069c9611-8b57-4509-928f-41e250e733e3": 96, "b40b0af1-71b5-4b66-a91b-919ec800f7bf": 78, "aa45850d-4e4d-49b3-99fd-b859912ca0fd": 96, "b606bc62-6f0d-4ffa-963a-34645f90d5d2": 85, "65cd3076-933e-4a86-b17c-e4490fbdc91c": 71, "57b31ebc-ede9-443d-9fce-850a0be8ce5e": 82, "4dbd8b67-d31b-49e8-9cc5-bb4f124a79b3": 96, "65f1a6a0-739a-436e-8742-35a6ae3235a1": 89, "aa8a1bd8-4fe8-427c-8b2f-074e45003998": 92, "3eb4a070-1fb1-4ca6-9b41-8775f6cae5ea": 89}, "total_tagged": 24}, "Motivational interviewing": {"sessions": {"dacec153-8d33-4d03-97c1-eddc280a4c17": ["safe", "acceptable", "bot_performance_good", "engagement_good"], "84c91268-6a27-4fab-98dc-6e075865a65d": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "coaching_good", "engagement_good", "user_knowledge_good"], "f3a18403-c504-47bc-ab51-b7f5b308a517": ["safe", "bot_performance_bad"], "c8b90836-98b5-453f-937a-169e2d211a30": ["safe", "bot_performance_bad"], "b5137f35-3bdf-41cd-a77f-bc31e81601fc": ["safe", "acceptable", "refrigerator_example", "bot_performance_good"], "30e6e594-26e8-4729-b3a7-fdbc69b44dba": ["safe", "acceptable", "bot_performance_good", "bot_performance_bad", "coaching_good"], "fc1813bc-dbbf-4de8-a16e-8cfa761aecdd": ["safe", "bot_performance_good", "bot_performance_bad"], "cace292e-dab5-4da6-b01c-85c3e1a6c0fa": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "engagement_good"]}, "gs_scores": {"dacec153-8d33-4d03-97c1-eddc280a4c17": 92, "84c91268-6a27-4fab-98dc-6e075865a65d": 92, "f3a18403-c504-47bc-ab51-b7f5b308a517": 89, "c8b90836-98b5-453f-937a-169e2d211a30": 82, "b5137f35-3bdf-41cd-a77f-bc31e81601fc": 75, "30e6e594-26e8-4729-b3a7-fdbc69b44dba": 92, "fc1813bc-dbbf-4de8-a16e-8cfa761aecdd": 89, "cace292e-dab5-4da6-b01c-85c3e1a6c0fa": 96}, "total_tagged": 8}, "Visit check in": {"sessions": {"441416e1-3f3c-42bf-8df5-ec7c879ab1a7": ["safe", "acceptable", "bot_performance_good", "engagement_good", "user_ai_response"], "d7887b1c-de47-4173-a85c-59b63e2811da": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "engagement_good"], "38cad5fe-976e-4fc1-8673-24ec5ebc61bf": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "engagement_good"], "b14f7694-1dd6-4657-9b9c-1c3f1d5d9746": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "engagement_good", "user_knowledge_good"], "18766b0e-08b8-451d-891e-c8085f92ad00": ["safe", "acceptable", "bot_performance_bad", "engagement_good"], "4a88ee25-96cf-4371-bb26-c8e4c4613e7e": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "engagement_good"], "3260989a-9115-4b53-b0dd-863f4af7c434": ["safe", "acceptable", "bot_performance_good", "engagement_good"]}, "gs_scores": {"441416e1-3f3c-42bf-8df5-ec7c879ab1a7": 82, "d7887b1c-de47-4173-a85c-59b63e2811da": 89, "38cad5fe-976e-4fc1-8673-24ec5ebc61bf": 92, "b14f7694-1dd6-4657-9b9c-1c3f1d5d9746": 89, "18766b0e-08b8-451d-891e-c8085f92ad00": 92, "4a88ee25-96cf-4371-bb26-c8e4c4613e7e": 75, "3260989a-9115-4b53-b0dd-863f4af7c434": 78}, "total_tagged": 7}}, "Coaching bot V4": {"Microlearning": {"sessions": {"ebd54272-a6f9-4b8d-ae42-22b3ac661256": ["safe", "bot_performance_good", "bot_performance_bad", "engagement_good"], "7e1afe64-0bda-481f-9475-bf27d3ae4fdd": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "coaching_good", "engagement_good", "user_knowledge_good"], "54241058-021b-49c0-8435-c63680f214c7": ["not_refrigerator_example", "bot_performance_bad"], "ceea76a1-45a5-4c90-8508-adef96185c05": ["safe", "acceptable", "bot_performance_bad", "coaching_good", "engagement_good"], "a5407fd9-fe98-475c-bb75-52526f165a1d": ["safe", "acceptable", "bot_performance_good", "coaching_good", "engagement_good", "engagement_bad", "user_knowledge_bad"], "7b8f5731-3293-4c5e-8414-51d40a73d61b": ["safe", "acceptable", "not_refrigerator_example", "bot_performance_bad", "coaching_good", "engagement_good", "user_knowledge_good"], "323c51c7-7178-4617-a9be-dbc6ed219d32": ["safe", "refrigerator_example", "bot_performance_bad", "coaching_good", "engagement_good"], "227c567d-e1b2-43b6-8f3a-169e7806a1d7": ["refrigerator_example", "coaching_good"], "afdf8dc4-d17c-411e-a45c-8ad65bb34494": ["refrigerator_example", "coaching_good"], "59fa5324-7f16-4676-8f8c-2f492da45f5d": ["safe", "acceptable", "bot_performance_good", "coaching_good", "engagement_good", "user_knowledge_bad"], "f57802f6-8b7e-41dc-9f27-3d1869acf33d": ["safe", "acceptable", "refrigerator_example", "coaching_good", "engagement_good", "engagement_bad", "user_knowledge_bad"], "687cd5a5-76b9-437f-b14c-a8eb7a43c8bf": ["safe", "acceptable", "coaching_good", "engagement_bad"], "6c1f2aef-da28-45cb-a148-63e74e5105e5": ["safe", "acceptable", "refrigerator_example", "coaching_good", "engagement_good", "user_knowledge_good"], "eeaa461e-8d04-4c2b-81c1-2bd5e27d3943": ["safe", "unacceptable", "bot_performance_bad"], "88643653-1405-40d6-b256-e07b91791a24": ["not_refrigerator_example", "bot_performance_bad"], "b3fd93de-1d71-45fc-8cec-bbcbb49c3d11": ["not_refrigerator_example"], "b12d4c52-a189-4db0-be64-ee4fa6950e56": ["safe", "bot_performance_bad"], "1fe44343-48cf-47af-8e7c-e7b8076c7ce1": ["refrigerator_example", "bot_performance_bad", "coaching_good", "coaching_bad"], "8bcf8f03-b10e-486c-919e-0eec63b28683": ["safe", "acceptable", "refrigerator_example", "bot_performance_good"], "e8d856aa-ed1a-4b85-b859-d647f7b4bd8f": ["safe", "refrigerator_example", "bot_performance_good", "coaching_good", "engagement_good", "user_knowledge_good"], "11f8f4cb-bf38-4c63-b2ed-4fbf13e39b24": ["refrigerator_example", "not_refrigerator_example", "bot_performance_good", "engagement_good"], "3f74844d-b4a8-410d-96a8-458e126c158a": ["safe", "acceptable", "refrigerator_example", "bot_performance_good"], "0e6e1b5e-9e6e-4c54-9a36-528f96672ef5": ["safe", "acceptable", "refrigerator_example", "coaching_good", "engagement_good", "user_knowledge_good"], "8301d29a-6a1e-4ee3-a9fa-af2305694e37": ["safe", "acceptable", "refrigerator_example", "coaching_good", "engagement_good", "user_knowledge_bad"], "6f4f6b17-54df-4fcd-8743-57a5d6e1d7ab": ["refrigerator_example", "not_refrigerator_example", "bot_performance_bad"], "176e9952-b33f-4b0e-a568-0adb71a97dac": ["refrigerator_example", "bot_performance_bad"], "adb69edd-4103-4ba2-b14f-0d05b860a711": ["safe", "acceptable", "bot_performance_bad", "coaching_good", "engagement_bad", "user_knowledge_good"], "72f3dae2-7b71-45b6-8c16-69f83452601b": ["safe", "bot_performance_bad"], "02627e61-4061-49e5-844d-e07cc6bf6aeb": ["safe", "acceptable", "coaching_good", "engagement_bad", "user_knowledge_bad", "user_ai_response"], "6f7b2a44-dd3b-45aa-9cde-a651ef7bf640": ["safe", "acceptable", "bot_performance_good", "bot_performance_bad"], "e90c64b1-d09b-42ec-9d06-2c092d5edd8d": ["safe", "acceptable", "refrigerator_example", "coaching_good", "engagement_good", "user_knowledge_good"], "ed808906-fdfb-4267-a154-156362d6497e": ["safe", "acceptable", "refrigerator_example", "coaching_good", "engagement_good", "user_knowledge_good"], "edf30345-2449-4be5-829a-8eaf43f441ad": ["safe", "unacceptable", "bot_performance_bad", "engagement_bad"], "2e202b1b-3ba1-4dd7-96e8-53ce3e86e070": ["safe", "acceptable", "refrigerator_example", "coaching_good"], "601f901a-e3eb-446e-ba9c-eee714ec3b37": ["safe", "bot_performance_bad"], "1150ce66-350d-4480-9eae-eb42990aefba": ["safe", "bot_performance_bad", "engagement_good"], "63a047ff-0359-450a-bece-ae89f0d6ff8b": ["bot_performance_bad"], "afa91f36-9089-4378-b704-339f04ab2c34": ["safe", "acceptable", "refrigerator_example", "coaching_good", "engagement_good"], "861258fa-15d1-4073-972e-d5973d00fa80": ["not_refrigerator_example"], "e41dba6d-848f-40b1-8c14-85e9cf4e089f": ["safe", "acceptable", "bot_performance_bad"], "db4cab12-b67d-4fdd-b009-75f89f164c8c": ["safe", "acceptable", "bot_performance_good", "bot_performance_bad", "coaching_good"], "007affcc-df0b-429d-a415-68b0676d3ef4": ["refrigerator_example"], "345ceee6-33f7-49af-83c7-3003c1425c3b": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "coaching_good", "engagement_good", "user_knowledge_bad"], "d2ea059f-518a-4e52-be68-bb9d1e311be5": ["safe", "bot_performance_good", "coaching_undetermined", "engagement_good", "user_knowledge_good"], "ab687d25-5178-42a1-9874-7a38132d477a": ["safe", "acceptable", "bot_performance_good", "coaching_good", "engagement_good", "user_knowledge_bad"], "44993b8e-fd43-42b7-8343-47c130e2dd8d": ["not_refrigerator_example"], "400a28ec-ff28-40fe-afb3-795d0ca78afd": ["refrigerator_example", "bot_performance_good", "coaching_good", "engagement_good", "user_knowledge_good"], "e3562954-0f83-4eb1-8b37-cca88f517bac": ["safe", "acceptable", "bot_performance_good", "coaching_undetermined", "engagement_good", "user_knowledge_good"], "20c97536-5c81-4182-b09d-5d3c7e3ced6e": ["refrigerator_example", "bot_performance_bad"], "7b9aabb1-a3d6-47c7-9d1d-dfb476dba41c": ["safe", "unacceptable", "refrigerator_example", "bot_performance_bad", "coaching_good", "engagement_good"], "9e1b259d-5f30-4d60-aa96-02d811e276dc": ["safe", "bot_performance_good", "engagement_good"], "df502f3a-1e92-48ff-8af7-6ecfc12a0b74": ["refrigerator_example"], "beb4754d-059f-4207-9996-76dd02eadde2": ["safe", "acceptable", "bot_performance_bad"], "bc6028d0-fbb6-4f3a-ad1e-9e52f05264bb": ["safe", "acceptable", "not_refrigerator_example", "bot_performance_bad", "coaching_good", "engagement_good"], "2756ab52-7c08-43e2-b4d0-55f082a73099": ["bot_performance_bad"], "e8d477bb-13b4-48b0-8c5f-4cf649330ebe": ["refrigerator_example", "coaching_good"], "9cc6d20f-caff-48f5-9e5a-748d9695f76b": ["not_refrigerator_example"], "2e326c2b-2592-40b6-bacb-b20dbaa141d3": ["safe", "acceptable", "bot_performance_good", "bot_performance_bad"], "5b232191-5322-4def-b184-e2087bc98fe9": ["not_refrigerator_example"], "b0e109e3-d8b2-4ccf-a135-87432d652d86": ["safe", "acceptable", "bot_performance_good", "coaching_good"], "6b0db7b4-5d2e-4c32-bd29-cfe86ce6a33e": ["safe", "acceptable", "bot_performance_bad", "coaching_good", "engagement_bad", "user_knowledge_bad"], "60b35f38-d350-4b3d-be44-85a772eefdda": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "coaching_good", "user_knowledge_bad"], "835c8917-70bb-4ffb-a314-f1759f1e35ea": ["safe", "acceptable", "not_refrigerator_example", "coaching_undetermined", "engagement_bad", "user_knowledge_bad"], "871378a4-7dc0-4f1e-80a8-2646ebb57a6d": ["safe", "acceptable", "refrigerator_example", "bot_performance_bad", "coaching_good", "engagement_bad"], "5d973705-f4d6-4bea-9666-382eb2da5cc8": ["not_refrigerator_example", "bot_performance_bad"], "1e162a4c-2ab0-415f-ab85-02f398f00102": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "coaching_good", "engagement_good", "user_knowledge_good"], "16cf9905-e381-4521-9af3-07cb11cc3036": ["safe", "bot_performance_bad"], "bac6d36d-1c71-4f7e-b9dd-842bd2e524c5": ["safe", "acceptable", "bot_performance_bad", "engagement_good"], "e4a1c05b-c285-463c-932c-53e7ebfc9493": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "coaching_good", "engagement_good", "user_knowledge_good"], "d9e0a709-f6da-45d2-955b-887ee3886a93": ["refrigerator_example", "coaching_good"], "b4595ada-e8f9-40ec-9003-60f9a911a80b": ["safe", "bot_performance_bad", "engagement_good"]}, "gs_scores": {"ebd54272-a6f9-4b8d-ae42-22b3ac661256": 89, "7e1afe64-0bda-481f-9475-bf27d3ae4fdd": 96, "54241058-021b-49c0-8435-c63680f214c7": 96, "ceea76a1-45a5-4c90-8508-adef96185c05": 100, "a5407fd9-fe98-475c-bb75-52526f165a1d": 100, "7b8f5731-3293-4c5e-8414-51d40a73d61b": 100, "323c51c7-7178-4617-a9be-dbc6ed219d32": 100, "227c567d-e1b2-43b6-8f3a-169e7806a1d7": 100, "afdf8dc4-d17c-411e-a45c-8ad65bb34494": 100, "59fa5324-7f16-4676-8f8c-2f492da45f5d": 96, "f57802f6-8b7e-41dc-9f27-3d1869acf33d": 100, "687cd5a5-76b9-437f-b14c-a8eb7a43c8bf": 100, "6c1f2aef-da28-45cb-a148-63e74e5105e5": 100, "eeaa461e-8d04-4c2b-81c1-2bd5e27d3943": 96, "88643653-1405-40d6-b256-e07b91791a24": 100, "b3fd93de-1d71-45fc-8cec-bbcbb49c3d11": 96, "b12d4c52-a189-4db0-be64-ee4fa6950e56": 96, "1fe44343-48cf-47af-8e7c-e7b8076c7ce1": 92, "8bcf8f03-b10e-486c-919e-0eec63b28683": 100, "e8d856aa-ed1a-4b85-b859-d647f7b4bd8f": 89, "11f8f4cb-bf38-4c63-b2ed-4fbf13e39b24": 100, "3f74844d-b4a8-410d-96a8-458e126c158a": 100, "0e6e1b5e-9e6e-4c54-9a36-528f96672ef5": 92, "8301d29a-6a1e-4ee3-a9fa-af2305694e37": 100, "6f4f6b17-54df-4fcd-8743-57a5d6e1d7ab": 100, "176e9952-b33f-4b0e-a568-0adb71a97dac": 100, "adb69edd-4103-4ba2-b14f-0d05b860a711": 100, "72f3dae2-7b71-45b6-8c16-69f83452601b": 96, "02627e61-4061-49e5-844d-e07cc6bf6aeb": 96, "6f7b2a44-dd3b-45aa-9cde-a651ef7bf640": 100, "e90c64b1-d09b-42ec-9d06-2c092d5edd8d": 100, "ed808906-fdfb-4267-a154-156362d6497e": 100, "edf30345-2449-4be5-829a-8eaf43f441ad": 100, "2e202b1b-3ba1-4dd7-96e8-53ce3e86e070": 100, "601f901a-e3eb-446e-ba9c-eee714ec3b37": 89, "1150ce66-350d-4480-9eae-eb42990aefba": 96, "63a047ff-0359-450a-bece-ae89f0d6ff8b": 100, "afa91f36-9089-4378-b704-339f04ab2c34": 100, "861258fa-15d1-4073-972e-d5973d00fa80": 100, "e41dba6d-848f-40b1-8c14-85e9cf4e089f": 100, "db4cab12-b67d-4fdd-b009-75f89f164c8c": 100, "007affcc-df0b-429d-a415-68b0676d3ef4": 96, "345ceee6-33f7-49af-83c7-3003c1425c3b": 100, "d2ea059f-518a-4e52-be68-bb9d1e311be5": 96, "ab687d25-5178-42a1-9874-7a38132d477a": 100, "44993b8e-fd43-42b7-8343-47c130e2dd8d": 100, "400a28ec-ff28-40fe-afb3-795d0ca78afd": 100, "e3562954-0f83-4eb1-8b37-cca88f517bac": 100, "20c97536-5c81-4182-b09d-5d3c7e3ced6e": 96, "7b9aabb1-a3d6-47c7-9d1d-dfb476dba41c": 100, "9e1b259d-5f30-4d60-aa96-02d811e276dc": 96, "df502f3a-1e92-48ff-8af7-6ecfc12a0b74": 100, "beb4754d-059f-4207-9996-76dd02eadde2": 100, "bc6028d0-fbb6-4f3a-ad1e-9e52f05264bb": 96, "2756ab52-7c08-43e2-b4d0-55f082a73099": 96, "e8d477bb-13b4-48b0-8c5f-4cf649330ebe": 100, "9cc6d20f-caff-48f5-9e5a-748d9695f76b": 100, "2e326c2b-2592-40b6-bacb-b20dbaa141d3": 96, "5b232191-5322-4def-b184-e2087bc98fe9": 100, "b0e109e3-d8b2-4ccf-a135-87432d652d86": 96, "6b0db7b4-5d2e-4c32-bd29-cfe86ce6a33e": 100, "60b35f38-d350-4b3d-be44-85a772eefdda": 96, "835c8917-70bb-4ffb-a314-f1759f1e35ea": 100, "871378a4-7dc0-4f1e-80a8-2646ebb57a6d": 96, "5d973705-f4d6-4bea-9666-382eb2da5cc8": 96, "1e162a4c-2ab0-415f-ab85-02f398f00102": 100, "16cf9905-e381-4521-9af3-07cb11cc3036": 96, "bac6d36d-1c71-4f7e-b9dd-842bd2e524c5": 96, "e4a1c05b-c285-463c-932c-53e7ebfc9493": 100, "d9e0a709-f6da-45d2-955b-887ee3886a93": 100, "b4595ada-e8f9-40ec-9003-60f9a911a80b": 96}, "total_tagged": 71}, "Visit check in": {"sessions": {"92c1b331-3267-4baa-9638-363ec8447016": ["safe", "acceptable", "bot_performance_bad", "coaching_good", "engagement_bad"], "6c999bce-9288-436b-a5d2-ada3bc582fed": ["safe", "acceptable", "bot_performance_bad", "engagement_good"], "c8597aee-0a54-4991-b1cf-1bd394e31b12": ["safe", "acceptable", "bot_performance_good", "coaching_undetermined", "coaching_bad", "engagement_good", "user_knowledge_good"], "a5f13865-8b74-43cd-b58f-0f69ad75ff29": ["safe", "bot_performance_bad", "engagement_good"], "46caa74b-ca49-4818-b1bf-b8f4954bf2ec": ["safe", "bot_performance_good", "bot_performance_bad", "coaching_undetermined", "user_knowledge_bad"], "c89ad2c8-3bee-4059-86a4-e5d73e6a2534": ["bot_performance_bad", "coaching_undetermined"], "985c56dd-9989-43dd-97df-42eae1d6a7b8": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "engagement_good"], "2435c5fa-1ef3-4594-b9ba-078f77f6a493": ["safe", "acceptable", "coaching_good", "engagement_good", "user_knowledge_good"], "486930d8-271a-4262-a6c8-aa3c2be6113c": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "engagement_good"], "6b505178-06c0-4338-bc54-adb86069329c": ["safe", "acceptable", "bot_performance_good", "bot_performance_bad", "coaching_good", "engagement_good", "engagement_bad", "user_knowledge_good"], "0e249b41-0ac7-4403-94c3-023e56b49443": ["safe", "bot_performance_good", "bot_performance_bad", "engagement_good"], "f2171559-5caa-469f-90a4-155ac23d78a8": ["safe", "acceptable", "coaching_good", "engagement_good", "user_knowledge_good"], "ae3c5086-f18b-479b-92de-a49d87962c3b": ["safe", "bot_performance_good", "bot_performance_bad", "engagement_good"], "529328b9-c0db-4112-8f01-5c3f94cec2f4": ["safe", "acceptable", "coaching_undetermined", "engagement_good", "user_knowledge_good"], "5502cb91-edff-4432-973e-c3b4c1073583": ["safe", "unacceptable", "bot_performance_good", "bot_performance_bad", "coaching_good", "engagement_good", "user_knowledge_good"], "48ea02f4-e418-40dd-a593-6751dc9ba1c4": ["safe", "acceptable", "bot_performance_good", "coaching_bad", "engagement_bad"], "d5bd4ee0-3892-4b61-8e38-beccf67ba405": ["safe", "acceptable", "bot_performance_bad"], "e43bd195-efd7-483e-a735-dbecd7e52faf": ["safe", "bot_performance_good", "coaching_undetermined"], "1af17384-e270-4205-9ac8-e069b75c677e": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "bot_performance_bad", "coaching_good", "engagement_good", "user_knowledge_good"]}, "gs_scores": {"92c1b331-3267-4baa-9638-363ec8447016": 100, "6c999bce-9288-436b-a5d2-ada3bc582fed": 96, "c8597aee-0a54-4991-b1cf-1bd394e31b12": 89, "a5f13865-8b74-43cd-b58f-0f69ad75ff29": 96, "46caa74b-ca49-4818-b1bf-b8f4954bf2ec": 100, "c89ad2c8-3bee-4059-86a4-e5d73e6a2534": 96, "985c56dd-9989-43dd-97df-42eae1d6a7b8": 100, "2435c5fa-1ef3-4594-b9ba-078f77f6a493": 100, "486930d8-271a-4262-a6c8-aa3c2be6113c": 92, "6b505178-06c0-4338-bc54-adb86069329c": 100, "0e249b41-0ac7-4403-94c3-023e56b49443": 96, "f2171559-5caa-469f-90a4-155ac23d78a8": 96, "ae3c5086-f18b-479b-92de-a49d87962c3b": 96, "529328b9-c0db-4112-8f01-5c3f94cec2f4": 100, "5502cb91-edff-4432-973e-c3b4c1073583": 100, "48ea02f4-e418-40dd-a593-6751dc9ba1c4": 100, "d5bd4ee0-3892-4b61-8e38-beccf67ba405": 100, "e43bd195-efd7-483e-a735-dbecd7e52faf": 96, "1af17384-e270-4205-9ac8-e069b75c677e": 96}, "total_tagged": 19}, "Motivational interviewing": {"sessions": {"3d876476-fd44-4c83-961b-f2e5bf0e4068": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "coaching_good", "engagement_good", "user_knowledge_good"], "200d3383-1ed6-452b-b972-cf94904359fa": ["safe", "acceptable", "bot_performance_good", "bot_performance_bad", "coaching_undetermined", "engagement_good", "user_knowledge_good"], "4535e9ec-2edb-4953-af0d-7b4a3478855b": ["safe", "acceptable", "not_refrigerator_example", "bot_performance_bad", "coaching_undetermined", "engagement_good", "user_knowledge_good"], "b8f39ed5-3271-4279-acf7-b1143c3d78b9": ["safe", "acceptable", "coaching_good", "engagement_good", "user_knowledge_good"], "5cb24185-a818-448e-bb67-d9784ae12b0a": ["bot_performance_bad"], "89224be1-517c-442f-ad77-93c9bab4f02b": ["safe", "acceptable", "not_refrigerator_example", "bot_performance_bad", "coaching_undetermined", "engagement_good", "user_knowledge_good"], "7545f09b-f0df-4e1a-bf88-f8a39c712f1a": ["safe", "bot_performance_good", "engagement_good"], "29354e82-e842-4b93-bdcc-3f23fb96da38": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "coaching_good", "engagement_good", "user_knowledge_good"], "e0e74251-c2d5-4876-a054-6b90546d8ffe": ["safe", "acceptable", "bot_performance_good", "bot_performance_bad", "coaching_good", "engagement_good", "user_knowledge_good"], "68c51cb9-dbcf-461a-87fc-aba58c064d4b": ["safe", "unacceptable", "bot_performance_bad", "coaching_undetermined", "engagement_bad", "user_knowledge_bad"], "db7f4f40-23f1-417a-b5b5-47026f7026fd": ["safe", "acceptable", "bot_performance_bad", "coaching_good", "engagement_good", "user_knowledge_good"], "71996b61-319c-409f-9182-6c7d10a7a3fd": ["safe", "acceptable", "bot_performance_good", "bot_performance_bad", "engagement_good"], "08c8ead3-04a0-41e3-ad06-b40edc1e6a90": ["safe", "unacceptable", "bot_performance_bad", "user_ai_response"], "36432be5-ad64-41ca-95af-0c4aa8346080": ["safe", "acceptable", "bot_performance_bad"], "2affd0c3-e0ed-456d-8788-61bb6e61a089": ["safe", "acceptable", "bot_performance_good", "coaching_bad", "engagement_bad"], "b233eee5-4465-454f-8687-a15f58962c49": ["safe", "unacceptable", "coaching_good", "engagement_good", "user_knowledge_good"], "9119e707-53e8-4ba0-9301-5c6d768b1f96": ["safe", "acceptable", "not_refrigerator_example", "coaching_undetermined", "engagement_good", "engagement_bad", "user_knowledge_good"], "bd137538-c286-482d-b2bd-645a7d541697": ["safe", "bot_performance_good", "coaching_undetermined", "engagement_bad", "user_knowledge_bad"], "eb2e147c-ad2d-4aff-ab2f-04546b9dbb41": ["safe", "acceptable", "bot_performance_bad"], "e4f12bf9-4f8f-476f-b83c-a86683316841": ["safe", "unacceptable", "bot_performance_bad", "coaching_undetermined", "engagement_bad", "user_knowledge_good"], "ceb1a547-2652-4a84-9672-dc2dd41f129b": ["safe", "acceptable", "bot_performance_bad", "engagement_good"], "9f7510e8-fa13-4417-a8ae-50753c294fac": ["safe", "acceptable", "refrigerator_example", "coaching_good", "engagement_good", "user_knowledge_good"], "ac8ae76b-69f9-439f-a6ef-492f11827748": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "engagement_good", "user_knowledge_good"], "ff9686cc-2e9f-4fcb-afce-6397d963df47": ["safe", "acceptable", "bot_performance_bad", "coaching_good", "engagement_good", "user_knowledge_good"], "602aeb42-1631-4600-a30a-6688e8e185b9": ["safe", "acceptable", "refrigerator_example", "bot_performance_bad", "coaching_good", "engagement_good", "user_knowledge_good"], "9970b78c-018a-4738-8ad9-ff7e2efbabe7": ["bot_performance_good", "bot_performance_bad", "coaching_good"], "26585a2a-6f6d-435a-b125-eb6bfeb68208": ["safe", "bot_performance_good", "coaching_undetermined", "engagement_good", "user_knowledge_good"]}, "gs_scores": {"3d876476-fd44-4c83-961b-f2e5bf0e4068": 100, "200d3383-1ed6-452b-b972-cf94904359fa": 100, "4535e9ec-2edb-4953-af0d-7b4a3478855b": 100, "b8f39ed5-3271-4279-acf7-b1143c3d78b9": 92, "5cb24185-a818-448e-bb67-d9784ae12b0a": 100, "89224be1-517c-442f-ad77-93c9bab4f02b": 100, "7545f09b-f0df-4e1a-bf88-f8a39c712f1a": 100, "29354e82-e842-4b93-bdcc-3f23fb96da38": 100, "e0e74251-c2d5-4876-a054-6b90546d8ffe": 100, "68c51cb9-dbcf-461a-87fc-aba58c064d4b": 96, "db7f4f40-23f1-417a-b5b5-47026f7026fd": 100, "71996b61-319c-409f-9182-6c7d10a7a3fd": 100, "08c8ead3-04a0-41e3-ad06-b40edc1e6a90": 89, "36432be5-ad64-41ca-95af-0c4aa8346080": 96, "2affd0c3-e0ed-456d-8788-61bb6e61a089": 100, "b233eee5-4465-454f-8687-a15f58962c49": 100, "9119e707-53e8-4ba0-9301-5c6d768b1f96": 100, "bd137538-c286-482d-b2bd-645a7d541697": 100, "eb2e147c-ad2d-4aff-ab2f-04546b9dbb41": 100, "e4f12bf9-4f8f-476f-b83c-a86683316841": 96, "ceb1a547-2652-4a84-9672-dc2dd41f129b": 96, "9f7510e8-fa13-4417-a8ae-50753c294fac": 96, "ac8ae76b-69f9-439f-a6ef-492f11827748": 92, "ff9686cc-2e9f-4fcb-afce-6397d963df47": 100, "602aeb42-1631-4600-a30a-6688e8e185b9": 100, "9970b78c-018a-4738-8ad9-ff7e2efbabe7": 96, "26585a2a-6f6d-435a-b125-eb6bfeb68208": 96}, "total_tagged": 27}, "Scenario": {"sessions": {"8c008ab4-d68a-4dd4-9ce2-d55be0d0f7bf": ["safe", "acceptable", "bot_performance_bad", "coaching_good", "coaching_bad"], "79f74129-d9ac-4250-9ce2-dc936f3e5aa4": ["safe", "acceptable", "coaching_good", "engagement_bad", "user_knowledge_bad"], "bc4dc7cb-f554-4b76-990c-7d0228773d1c": ["safe", "acceptable", "bot_performance_bad"], "b9d1c8b6-a413-4af2-aeed-4b22446af18c": ["safe", "bot_performance_good", "engagement_good"], "138741a9-8c8c-4aa9-b414-dff9d66e2819": ["safe", "acceptable", "refrigerator_example", "bot_performance_bad", "engagement_good"], "99e5be23-eb33-4d47-905f-a2dc204d88ad": ["safe", "acceptable", "coaching_good", "engagement_good", "user_knowledge_good"], "051f16bb-93c5-4574-9445-283219e21812": ["safe", "acceptable", "bot_performance_good", "coaching_undetermined", "engagement_good", "user_knowledge_good"], "69b2fd60-f996-4642-afff-a75aa187c092": ["safe", "bot_performance_bad"], "39e3a68c-aa0c-4280-a63f-8962588cc524": ["engagement_good"], "329e911f-b10f-45ff-ac42-6883a66bb83f": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "coaching_good", "engagement_good", "user_knowledge_good"], "c26a5833-bc1f-4b36-95fa-49272436e640": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "bot_performance_bad", "coaching_good", "engagement_good", "user_knowledge_good"], "8e5270a6-2763-46cd-85ba-1c7597ddfbc1": ["safe", "acceptable", "bot_performance_bad", "coaching_undetermined", "engagement_bad", "user_knowledge_bad"], "5eb4e32a-a9d6-42fc-98f4-ef5b22d007ac": ["safe", "acceptable", "refrigerator_example", "coaching_good", "engagement_good", "user_knowledge_good"], "6d3d0b1e-9714-4226-8a98-c35dc3d79511": ["safe", "acceptable", "bot_performance_good", "coaching_good", "engagement_good", "user_knowledge_good"], "af8a550b-4d3d-46aa-9986-2150f284c13a": ["safe", "unacceptable", "bot_performance_good", "bot_performance_bad"], "6d3a3fb1-9160-4a60-b854-d73c8e0b20c7": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "coaching_good"], "3a42fa31-35dd-4bdb-a870-fd4acc0d591a": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "coaching_good", "engagement_good", "user_knowledge_good"], "a96e39ed-e036-41f1-a790-d6eb1e2649f6": ["safe", "acceptable", "bot_performance_bad", "coaching_good", "engagement_good", "user_knowledge_good"], "3666e726-ac4c-4256-b67f-e8e187a1d74d": ["safe", "bot_performance_good", "bot_performance_bad", "engagement_good"], "3ab5d36a-07af-4dcb-83ce-ff13aa06bd84": ["safe", "acceptable", "bot_performance_bad", "coaching_bad", "engagement_good", "user_knowledge_good"], "9d462908-3cf1-420b-a47d-a539fa099dfd": ["safe", "bot_performance_bad"], "14c0e4cb-cbce-4b4c-97b4-a648f33785f6": ["safe", "acceptable", "bot_performance_good", "bot_performance_bad", "engagement_good"], "d98e0127-5ef6-474a-92a7-198e69ef9cef": ["safe", "acceptable", "bot_performance_good", "coaching_good", "engagement_bad", "user_knowledge_good"], "f86af8b9-befd-4c43-809b-d4a3501f50b3": ["safe", "acceptable", "engagement_good"], "15923063-988c-4c72-9fef-54159937a034": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "coaching_good", "engagement_good", "user_knowledge_good"], "3b8d7cf4-e381-4e3a-8036-228261c21d39": ["safe", "bot_performance_bad", "user_ai_response"], "ef1ab5b6-e3d4-4b01-97ca-b4143eed4ebc": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "coaching_good"], "f24dcc04-7dc9-4d10-a925-56d753badcea": ["safe", "bot_performance_good", "engagement_good"], "90951106-0eb7-42ef-b7eb-228a79429cac": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "engagement_good"], "71dec6f9-c119-45fb-81b5-a77beda6fbc0": ["bot_performance_bad"], "1b673e5a-7713-4a04-9d70-4ee9800ca420": ["safe", "acceptable", "coaching_good", "engagement_bad", "user_knowledge_bad"], "c105e216-97d7-4448-8d92-e99dc8bef707": ["safe", "acceptable", "refrigerator_example", "coaching_good", "engagement_good", "user_knowledge_good"], "2c3a779f-e378-4669-aec6-2b622e38c060": ["safe", "acceptable", "bot_performance_good", "coaching_good", "engagement_bad", "user_knowledge_good"], "95565b0d-783d-467c-85e9-0d7eccbca31c": ["safe", "acceptable", "refrigerator_example", "coaching_good", "engagement_good", "user_knowledge_good"], "a88efce8-ee4d-4a2f-b76b-7232ffa2cbee": ["safe", "bot_performance_good", "bot_performance_bad", "coaching_undetermined", "engagement_bad", "user_knowledge_bad"], "07ba7a75-4059-45c5-92fa-5f3ab43848fb": ["safe", "bot_performance_good", "bot_performance_bad"], "d8515a8a-8806-4e72-b7d9-cee8e9754894": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "coaching_undetermined", "engagement_good", "engagement_bad", "user_knowledge_good", "user_knowledge_bad"], "86c96eaf-098b-4b55-9239-1bf3120b5265": ["safe", "acceptable", "refrigerator_example", "bot_performance_good", "coaching_good", "engagement_good", "user_knowledge_good"], "b11ba0e4-5abb-4cbb-a8f9-12b2f8b61549": ["safe", "refrigerator_example", "bot_performance_good", "engagement_good"]}, "gs_scores": {"8c008ab4-d68a-4dd4-9ce2-d55be0d0f7bf": 96, "79f74129-d9ac-4250-9ce2-dc936f3e5aa4": 100, "bc4dc7cb-f554-4b76-990c-7d0228773d1c": 96, "b9d1c8b6-a413-4af2-aeed-4b22446af18c": 96, "138741a9-8c8c-4aa9-b414-dff9d66e2819": 100, "99e5be23-eb33-4d47-905f-a2dc204d88ad": 89, "051f16bb-93c5-4574-9445-283219e21812": 100, "69b2fd60-f996-4642-afff-a75aa187c092": 96, "39e3a68c-aa0c-4280-a63f-8962588cc524": 92, "329e911f-b10f-45ff-ac42-6883a66bb83f": 96, "c26a5833-bc1f-4b36-95fa-49272436e640": 100, "8e5270a6-2763-46cd-85ba-1c7597ddfbc1": 100, "5eb4e32a-a9d6-42fc-98f4-ef5b22d007ac": 100, "6d3d0b1e-9714-4226-8a98-c35dc3d79511": 100, "af8a550b-4d3d-46aa-9986-2150f284c13a": 100, "6d3a3fb1-9160-4a60-b854-d73c8e0b20c7": 96, "3a42fa31-35dd-4bdb-a870-fd4acc0d591a": 100, "a96e39ed-e036-41f1-a790-d6eb1e2649f6": 100, "3666e726-ac4c-4256-b67f-e8e187a1d74d": 96, "3ab5d36a-07af-4dcb-83ce-ff13aa06bd84": 100, "9d462908-3cf1-420b-a47d-a539fa099dfd": 100, "14c0e4cb-cbce-4b4c-97b4-a648f33785f6": 96, "d98e0127-5ef6-474a-92a7-198e69ef9cef": 100, "f86af8b9-befd-4c43-809b-d4a3501f50b3": 100, "15923063-988c-4c72-9fef-54159937a034": 100, "3b8d7cf4-e381-4e3a-8036-228261c21d39": 96, "ef1ab5b6-e3d4-4b01-97ca-b4143eed4ebc": 100, "f24dcc04-7dc9-4d10-a925-56d753badcea": 100, "90951106-0eb7-42ef-b7eb-228a79429cac": 96, "71dec6f9-c119-45fb-81b5-a77beda6fbc0": 100, "1b673e5a-7713-4a04-9d70-4ee9800ca420": 100, "c105e216-97d7-4448-8d92-e99dc8bef707": 92, "2c3a779f-e378-4669-aec6-2b622e38c060": 96, "95565b0d-783d-467c-85e9-0d7eccbca31c": 100, "a88efce8-ee4d-4a2f-b76b-7232ffa2cbee": 96, "07ba7a75-4059-45c5-92fa-5f3ab43848fb": 100, "d8515a8a-8806-4e72-b7d9-cee8e9754894": 100, "86c96eaf-098b-4b55-9239-1bf3120b5265": 100, "b11ba0e4-5abb-4cbb-a8f9-12b2f8b61549": 96}, "total_tagged": 39}, "Unknown": {"sessions": {"d0890dae-0d55-4580-b1e0-9b82e6b74c5c": ["safe"], "707c626d-f3a9-49b9-addb-2e4cd6b3dc6f": ["safe"], "6289dde9-ea9e-4ccc-bd03-10b3e761d8b4": ["safe"]}, "gs_scores": {"d0890dae-0d55-4580-b1e0-9b82e6b74c5c": 96, "707c626d-f3a9-49b9-addb-2e4cd6b3dc6f": 96, "6289dde9-ea9e-4ccc-bd03-10b3e761d8b4": 92}, "total_tagged": 3}}, "Coaching bot V3": {"Scenario": {"sessions": {"a1a35395-0b9b-4764-807c-b197123dfd7a": ["bot_performance_bad", "coaching_good", "coaching_undetermined"], "6b104cd2-5516-48db-bb0f-b7f076470c6e": ["bot_performance_good", "bot_performance_bad", "coaching_good"], "34453b6b-b0f4-4b2b-81e0-3ddf1faf42f1": ["safe", "bot_performance_good", "coaching_undetermined", "engagement_good"], "1c8cd563-6fed-44b2-b801-dcec395f50c4": ["safe", "bot_performance_good", "bot_performance_bad", "coaching_undetermined"], "b4cfdf97-985d-4aae-9a3d-f10bd8166416": ["bot_performance_good", "bot_performance_bad", "engagement_good"], "b8371a40-6f30-4551-a2ca-6efbf729fcc5": ["safe", "bot_performance_good", "coaching_good", "engagement_good"], "c3fcd7cc-e9b0-442e-822c-1aad1c0eeef4": ["safe", "bot_performance_bad", "coaching_good"], "07738278-f8f4-404d-9fda-0e61529ffbf6": ["bot_performance_bad", "engagement_bad"], "208a30cb-5234-42c7-b68a-b03644a2691e": ["safe", "bot_performance_good", "coaching_good", "engagement_good"], "c0fabc0b-1b50-4298-8edf-588f2ad639ca": ["safe", "bot_performance_good", "coaching_good"], "b03e6f0c-4e5e-4cf3-baa4-bb67a0f72a62": ["safe", "bot_performance_bad", "coaching_undetermined"], "f898b9ab-6b8b-480b-8cc1-6a9a3dd537bf": ["safe", "bot_performance_good", "coaching_good", "engagement_good"], "4e0e2401-68cb-441c-a990-6d041fc47873": ["safe", "bot_performance_good", "coaching_undetermined"], "9832c5d4-a0db-4d79-bfcf-ef36623574eb": ["bot_performance_good"], "f6ee0a99-d50f-4e14-b484-68a3811bd50c": ["bot_performance_good", "coaching_good", "engagement_good", "user_knowledge_good"], "e47c3de0-b4b4-4e6e-a835-ace110a3b63c": ["safe", "bot_performance_bad", "coaching_good", "engagement_good"], "4608ca57-d88f-4f71-8387-652c57eaeec5": ["bot_performance_good", "coaching_good"], "bdfacca1-f40f-4313-9be2-1d059d839e81": ["bot_performance_good", "bot_performance_bad", "coaching_undetermined"], "f519d138-ee55-4b85-90ef-1340180081ed": ["safe", "bot_performance_good", "coaching_undetermined"], "32808fef-3579-42bc-93e7-471eb7a380bc": ["safe", "bot_performance_bad"], "46d50c00-11e7-4464-af77-c7c93019262b": ["bot_performance_good", "bot_performance_bad"], "33dbc1f0-29f0-4f68-92d0-3ebd2b928a97": ["safe", "bot_performance_good", "bot_performance_bad", "coaching_good"], "19e0af4a-58ea-4687-a7d7-17c57890d3bb": ["bot_performance_bad", "engagement_bad"], "96fd84ad-0c63-41df-b4cd-0a808dbca9d4": ["bot_performance_bad"], "41c065e7-7257-4755-a54f-89128e405f36": ["bot_performance_bad", "engagement_bad"], "5ed3e8bf-fb34-48fa-8403-5d6eef7c174f": ["bot_performance_good", "bot_performance_bad"], "883f4c95-5606-408f-961f-a951e327d317": ["safe", "bot_performance_good", "bot_performance_bad", "coaching_good"], "985740af-f906-4680-a7fa-1e0b08bcd02c": ["bot_performance_good", "coaching_good", "engagement_good"], "8d5b5b8e-58c2-4e29-8a7a-d9392bd39050": ["bot_performance_good", "coaching_undetermined"], "50d9e54e-ce2f-47aa-97db-5f17134ed4d6": ["bot_performance_good", "coaching_good"], "96418c7f-7a84-413f-996a-c0304915e969": ["bot_performance_good", "coaching_good", "engagement_good"], "641be780-15a2-43c0-b452-8ac7f80534ac": ["bot_performance_good", "coaching_good"], "7579cda2-c009-4df8-a96b-efa40795bf35": ["bot_performance_bad", "coaching_good"], "7c68bb1c-9904-48d8-b278-396f54684564": ["bot_performance_bad", "engagement_bad"], "ff5c5960-d5b1-495a-be16-4fdc067a8e07": ["bot_performance_bad", "engagement_good"], "7fca8511-797c-4514-b472-ec9abe2b06db": ["safe", "coaching_undetermined"], "28ad24f5-0650-4d05-956e-f0ea7a0ca47d": ["bot_performance_good", "engagement_bad"], "48f17139-fda9-4f2f-a526-157b8b7259e5": ["bot_performance_good", "coaching_good", "engagement_good"], "000a48d9-d6f2-43c1-9fa7-91111cd7a629": ["safe", "bot_performance_good", "coaching_undetermined"], "22f43a4f-8d76-4bc4-9de9-da40d13d46af": ["bot_performance_good", "coaching_undetermined", "engagement_bad"], "78d8d0e9-207f-4423-bc76-ed503df20457": ["bot_performance_good", "bot_performance_bad", "engagement_good", "user_knowledge_good"], "1d88789c-1fd8-4135-9891-38d9ba52f5b5": ["bot_performance_good", "coaching_undetermined", "engagement_good"], "0905a649-aed0-4223-90dd-e684b7fd8db4": ["bot_performance_good", "bot_performance_bad", "engagement_good", "user_knowledge_good"], "154f05bc-c7e7-4fa7-a297-cae1611c06fc": ["bot_performance_good", "bot_performance_bad", "coaching_bad", "engagement_bad"], "b1bb05b7-21ba-4135-bca4-72897cc39d3e": ["bot_performance_good", "coaching_undetermined"], "a029c371-7073-44e6-928d-55e8bebe1524": ["bot_performance_good"], "03acfebc-33f1-4eb8-8b40-b82f62e9fd0c": ["bot_performance_good", "bot_performance_bad", "user_knowledge_good"], "bd731107-1ac5-4e0f-bd69-50549f78e6d8": ["safe", "bot_performance_bad", "coaching_undetermined", "engagement_good"], "2864451f-b80c-4c35-879d-39f27254a310": ["safe", "bot_performance_good", "coaching_good"], "7fd0f0c4-fb73-4726-b41a-8e3b5fba6d26": ["user_knowledge_good", "user_knowledge_bad"], "4be5c20c-bfbb-4194-8b08-811e46d4d114": ["safe", "bot_performance_good", "coaching_undetermined"], "2e819167-41ff-4fa4-9c10-e136acee734e": ["bot_performance_bad", "engagement_bad"]}, "gs_scores": {"a1a35395-0b9b-4764-807c-b197123dfd7a": 96, "6b104cd2-5516-48db-bb0f-b7f076470c6e": 75, "34453b6b-b0f4-4b2b-81e0-3ddf1faf42f1": 96, "1c8cd563-6fed-44b2-b801-dcec395f50c4": 92, "b4cfdf97-985d-4aae-9a3d-f10bd8166416": 82, "b8371a40-6f30-4551-a2ca-6efbf729fcc5": 96, "c3fcd7cc-e9b0-442e-822c-1aad1c0eeef4": 96, "07738278-f8f4-404d-9fda-0e61529ffbf6": 82, "208a30cb-5234-42c7-b68a-b03644a2691e": 96, "c0fabc0b-1b50-4298-8edf-588f2ad639ca": 96, "b03e6f0c-4e5e-4cf3-baa4-bb67a0f72a62": 89, "f898b9ab-6b8b-480b-8cc1-6a9a3dd537bf": 100, "4e0e2401-68cb-441c-a990-6d041fc47873": 92, "9832c5d4-a0db-4d79-bfcf-ef36623574eb": 82, "f6ee0a99-d50f-4e14-b484-68a3811bd50c": 82, "e47c3de0-b4b4-4e6e-a835-ace110a3b63c": 100, "4608ca57-d88f-4f71-8387-652c57eaeec5": 89, "bdfacca1-f40f-4313-9be2-1d059d839e81": 92, "f519d138-ee55-4b85-90ef-1340180081ed": 82, "32808fef-3579-42bc-93e7-471eb7a380bc": 100, "46d50c00-11e7-4464-af77-c7c93019262b": 92, "33dbc1f0-29f0-4f68-92d0-3ebd2b928a97": 92, "19e0af4a-58ea-4687-a7d7-17c57890d3bb": 75, "96fd84ad-0c63-41df-b4cd-0a808dbca9d4": 92, "41c065e7-7257-4755-a54f-89128e405f36": 96, "5ed3e8bf-fb34-48fa-8403-5d6eef7c174f": 82, "883f4c95-5606-408f-961f-a951e327d317": 96, "985740af-f906-4680-a7fa-1e0b08bcd02c": 92, "8d5b5b8e-58c2-4e29-8a7a-d9392bd39050": 96, "50d9e54e-ce2f-47aa-97db-5f17134ed4d6": 92, "96418c7f-7a84-413f-996a-c0304915e969": 92, "641be780-15a2-43c0-b452-8ac7f80534ac": 96, "7579cda2-c009-4df8-a96b-efa40795bf35": 100, "7c68bb1c-9904-48d8-b278-396f54684564": 96, "ff5c5960-d5b1-495a-be16-4fdc067a8e07": 75, "7fca8511-797c-4514-b472-ec9abe2b06db": 75, "28ad24f5-0650-4d05-956e-f0ea7a0ca47d": 82, "48f17139-fda9-4f2f-a526-157b8b7259e5": 92, "000a48d9-d6f2-43c1-9fa7-91111cd7a629": 82, "22f43a4f-8d76-4bc4-9de9-da40d13d46af": 96, "78d8d0e9-207f-4423-bc76-ed503df20457": 75, "1d88789c-1fd8-4135-9891-38d9ba52f5b5": 75, "0905a649-aed0-4223-90dd-e684b7fd8db4": 82, "154f05bc-c7e7-4fa7-a297-cae1611c06fc": 75, "b1bb05b7-21ba-4135-bca4-72897cc39d3e": 75, "a029c371-7073-44e6-928d-55e8bebe1524": 92, "03acfebc-33f1-4eb8-8b40-b82f62e9fd0c": 96, "bd731107-1ac5-4e0f-bd69-50549f78e6d8": 75, "2864451f-b80c-4c35-879d-39f27254a310": 92, "7fd0f0c4-fb73-4726-b41a-8e3b5fba6d26": 96, "4be5c20c-bfbb-4194-8b08-811e46d4d114": 100, "2e819167-41ff-4fa4-9c10-e136acee734e": 96}, "total_tagged": 52}, "Visit check in": {"sessions": {"a0cac2e8-d8f2-4765-ac6d-53ea5304f84a": ["bot_performance_bad"], "5445c6bc-1ff4-4dda-acea-3f6cb405ffeb": ["bot_performance_good", "bot_performance_bad", "coaching_undetermined", "engagement_bad"], "ead69855-5bc7-44c7-bdc7-8fa45efac657": ["bot_performance_good", "coaching_good", "engagement_good"], "183236ce-e0ea-4a30-a435-dd7f37fe93cb": ["safe", "bot_performance_good", "bot_performance_bad", "coaching_good"], "9f0f559f-9c29-4b20-9ccf-676f58f7ec92": ["bot_performance_bad", "coaching_undetermined"], "faffe0ed-52f1-451d-bb80-0b19aabbe591": ["bot_performance_good", "bot_performance_bad", "engagement_good", "user_knowledge_good"], "18204415-8416-4f9e-afeb-5f148a2f54f7": ["safe", "bot_performance_good", "coaching_good", "engagement_good"], "29aa2efe-b58b-4d90-863c-c1c4f73145fc": ["bot_performance_good", "bot_performance_bad", "coaching_undetermined", "coaching_bad", "engagement_bad"], "18fe0fd5-de39-412b-9efa-1ba7773657a2": ["bot_performance_good", "engagement_bad"], "93285e55-0f66-4d08-9d42-d7f647391a9f": ["bot_performance_good", "bot_performance_bad", "coaching_undetermined", "engagement_good"], "21d63215-863f-46be-988a-6c9e33bde441": ["bot_performance_good", "coaching_undetermined", "engagement_good", "user_knowledge_good"], "426a4607-9453-4b22-87d2-809af7cc0ab3": ["safe", "bot_performance_good", "engagement_good"], "a21feec3-ab71-42cd-9d14-7aef43a21d6e": ["bot_performance_good", "bot_performance_bad", "coaching_good"], "8c42423f-fe09-485e-974d-a4c237c06742": ["bot_performance_bad", "engagement_bad"], "5ab037d3-999e-421f-88e5-7a7d6e11f39b": ["bot_performance_bad", "engagement_bad"], "f1ace4ca-b5af-4c46-9f95-ad56001141c9": ["bot_performance_bad"], "e37d8aa9-6800-42a3-b3be-7175412ccdaa": ["bot_performance_good", "bot_performance_bad", "engagement_bad"], "9336bf46-7426-4590-85bd-13b04ecaa77f": ["bot_performance_good", "bot_performance_bad", "coaching_undetermined"], "56b4513f-2ea6-4427-bbe3-03e40fd58dd0": ["bot_performance_bad", "coaching_undetermined", "coaching_bad", "engagement_good"]}, "gs_scores": {"a0cac2e8-d8f2-4765-ac6d-53ea5304f84a": 92, "5445c6bc-1ff4-4dda-acea-3f6cb405ffeb": 92, "ead69855-5bc7-44c7-bdc7-8fa45efac657": 96, "183236ce-e0ea-4a30-a435-dd7f37fe93cb": 96, "9f0f559f-9c29-4b20-9ccf-676f58f7ec92": 92, "faffe0ed-52f1-451d-bb80-0b19aabbe591": 75, "18204415-8416-4f9e-afeb-5f148a2f54f7": 96, "29aa2efe-b58b-4d90-863c-c1c4f73145fc": 92, "18fe0fd5-de39-412b-9efa-1ba7773657a2": 92, "93285e55-0f66-4d08-9d42-d7f647391a9f": 75, "21d63215-863f-46be-988a-6c9e33bde441": 82, "426a4607-9453-4b22-87d2-809af7cc0ab3": 96, "a21feec3-ab71-42cd-9d14-7aef43a21d6e": 92, "8c42423f-fe09-485e-974d-a4c237c06742": 75, "5ab037d3-999e-421f-88e5-7a7d6e11f39b": 75, "f1ace4ca-b5af-4c46-9f95-ad56001141c9": 96, "e37d8aa9-6800-42a3-b3be-7175412ccdaa": 71, "9336bf46-7426-4590-85bd-13b04ecaa77f": 96, "56b4513f-2ea6-4427-bbe3-03e40fd58dd0": 75}, "total_tagged": 19}}, "Coaching bot V6": {"Microlearning": {"sessions": {"61fbffe3-750d-4af2-a206-45bb6f31898f": ["safe"], "39c7af15-ad86-4a6e-94d4-b796d72474e0": ["bot_performance_bad"], "86c2531f-2486-4e68-a618-e15b5a833603": ["bot_performance_bad", "engagement_good", "engagement_bad", "user_knowledge_good"], "8875010c-7b7a-4a1e-afd6-7a7b7f3d9a01": ["bot_performance_bad"]}, "gs_scores": {"61fbffe3-750d-4af2-a206-45bb6f31898f": 89, "39c7af15-ad86-4a6e-94d4-b796d72474e0": 89, "86c2531f-2486-4e68-a618-e15b5a833603": 78, "8875010c-7b7a-4a1e-afd6-7a7b7f3d9a01": 85}, "total_tagged": 4}, "Motivational interviewing": {"sessions": {"f6e30ea9-3746-40f8-b795-99d12ba77d16": ["refrigerator_example", "bot_performance_good", "engagement_good"], "ca65da47-ac8f-40b5-b0fa-ee232ee46498": ["refrigerator_example", "bot_performance_good", "engagement_good"], "31fdcefc-e4a0-4aa7-975b-0bbcf9e4831f": ["refrigerator_example", "bot_performance_good", "engagement_good", "user_knowledge_good"], "e49bed5e-6380-422c-addd-d64a4c776665": ["refrigerator_example", "bot_performance_good", "engagement_good", "user_knowledge_good"]}, "gs_scores": {"f6e30ea9-3746-40f8-b795-99d12ba77d16": 85, "ca65da47-ac8f-40b5-b0fa-ee232ee46498": 82, "31fdcefc-e4a0-4aa7-975b-0bbcf9e4831f": 89, "e49bed5e-6380-422c-addd-d64a4c776665": 78}, "total_tagged": 4}, "Visit check in": {"sessions": {"09413fcc-2ac3-4d7a-804d-9104a16606c8": ["safe", "acceptable", "coaching_good", "user_knowledge_good"]}, "gs_scores": {"09413fcc-2ac3-4d7a-804d-9104a16606c8": 67}, "total_tagged": 1}, "Microlearning vaccines": {"sessions": {"b39237ce-af83-41d3-a40b-60177ed10999": ["bot_performance_bad"], "a5eff9cd-dee5-49f9-9a6c-d02e6b3eb96c": ["refrigerator_example", "bot_performance_good", "engagement_good"], "9d3a36e2-fc12-429d-9bc3-8ea103f03f1c": ["bot_performance_good", "user_ai_response"], "bff5aaec-df21-433e-b633-42a174e16479": ["bot_performance_bad"], "a56a269c-d15d-40f2-bccb-ec8955acaf75": ["bot_performance_bad", "engagement_good", "user_knowledge_good"], "5f141291-379b-43d1-b2c0-6a8fba4e6597": ["safe", "acceptable", "refrigerator_example", "engagement_bad"], "09570275-0ae0-48ab-95aa-7c81f766ad56": ["refrigerator_example", "bot_performance_good", "engagement_good"]}, "gs_scores": {"b39237ce-af83-41d3-a40b-60177ed10999": 96, "a5eff9cd-dee5-49f9-9a6c-d02e6b3eb96c": 96, "9d3a36e2-fc12-429d-9bc3-8ea103f03f1c": 82, "bff5aaec-df21-433e-b633-42a174e16479": 67, "a56a269c-d15d-40f2-bccb-ec8955acaf75": 100, "5f141291-379b-43d1-b2c0-6a8fba4e6597": 96, "09570275-0ae0-48ab-95aa-7c81f766ad56": 82}, "total_tagged": 7}}, "Control bot": {"Unknown": {"sessions": {"58cf04c4-edcb-4f8a-bd43-14763cb017c5": ["bot_performance_bad"], "c696bdf6-1be1-4d41-9e30-50becdd094ef": ["bot_performance_bad"]}, "gs_scores": {"58cf04c4-edcb-4f8a-bd43-14763cb017c5": 85, "c696bdf6-1be1-4d41-9e30-50becdd094ef": 89}, "total_tagged": 2}}};
+        
+        // Rating distribution data from server
+        const ratingDistributionData = {"all": {"counts": {"5": 8829, "2": 130, "4": 551, "3": 399, "1": 258}, "percentages": {"5": 86.83977574505754, "2": 1.2786466017507623, "4": 5.419494442805154, "3": 3.9244614930658015, "1": 2.537621717320744}, "total": 10167}, "by_method": {"counts": {"Scenario": {"5": 1335, "1": 62, "3": 82, "2": 40, "4": 90}, "Unknown": {"5": 4010, "2": 43, "4": 282, "1": 76, "3": 77}, "Microlearning": {"5": 897, "4": 47, "1": 35, "3": 60, "2": 11}, "Microlearning vaccines": {"5": 666, "4": 28, "2": 18, "3": 60, "1": 28}, "Visit check in": {"5": 1004, "1": 30, "4": 59, "3": 62, "2": 7}, "Motivational interviewing": {"5": 917, "3": 58, "4": 45, "2": 11, "1": 27}}, "percentages": {"Scenario": {"5": 82.97078931013051, "1": 3.853325046612803, "3": 5.0963331261653195, "2": 2.4860161591050343, "4": 5.593536357986327}, "Unknown": {"5": 89.349376114082, "2": 0.9581105169340463, "4": 6.283422459893048, "1": 1.6934046345811051, "3": 1.715686274509804}, "Microlearning": {"5": 85.42857142857143, "4": 4.476190476190476, "1": 3.3333333333333335, "3": 5.714285714285714, "2": 1.0476190476190477}, "Microlearning vaccines": {"5": 83.25, "4": 3.5000000000000004, "2": 2.25, "3": 7.5, "1": 3.5000000000000004}, "Visit check in": {"5": 86.40275387263338, "1": 2.5817555938037864, "4": 5.077452667814113, "3": 5.335628227194492, "2": 0.6024096385542169}, "Motivational interviewing": {"5": 86.67296786389413, "3": 5.482041587901701, "4": 4.253308128544423, "2": 1.0396975425330812, "1": 2.551984877126654}}}, "by_version": {"counts": {"Coaching bot V4": {"5": 842, "4": 44, "1": 5, "2": 7, "3": 27}, "Control bot": {"5": 3973, "2": 43, "4": 281, "1": 77, "3": 73}, "Coaching bot V5": {"5": 1009, "4": 87, "3": 86, "1": 56, "2": 38}, "Coaching bot V6": {"5": 2787, "3": 202, "2": 40, "4": 111, "1": 115}, "Coaching bot V3": {"5": 218, "4": 28, "2": 2, "1": 5, "3": 11}}, "percentages": {"Coaching bot V4": {"5": 91.02702702702703, "4": 4.756756756756757, "1": 0.5405405405405406, "2": 0.7567567567567568, "3": 2.918918918918919}, "Control bot": {"5": 89.34112885091072, "2": 0.9669440071958625, "4": 6.318866651675287, "1": 1.7315043849786371, "3": 1.6415561052394871}, "Coaching bot V5": {"5": 79.07523510971787, "4": 6.8181818181818175, "3": 6.739811912225706, "1": 4.38871473354232, "2": 2.978056426332288}, "Coaching bot V6": {"5": 85.62211981566821, "3": 6.205837173579109, "2": 1.228878648233487, "4": 3.410138248847926, "1": 3.5330261136712746}, "Coaching bot V3": {"5": 82.57575757575758, "4": 10.606060606060606, "2": 0.7575757575757576, "1": 1.893939393939394, "3": 4.166666666666666}}}, "by_method_version": {"counts": {"Scenario": {"Coaching bot V4": {"5": 217, "2": 4, "3": 10, "4": 16, "1": 2}, "Coaching bot V6": {"5": 567, "1": 28, "3": 34, "4": 22, "2": 11}, "Coaching bot V5": {"5": 416, "3": 35, "2": 24, "1": 28, "4": 43}, "Coaching bot V3": {"5": 134, "4": 9, "2": 1, "1": 4, "3": 3}, "Control bot": {"5": 1}}, "Unknown": {"Control bot": {"5": 3968, "2": 43, "4": 281, "1": 76, "3": 73}, "Coaching bot V6": {"5": 42, "3": 4, "4": 1}}, "Microlearning": {"Coaching bot V5": {"5": 146, "4": 15, "1": 9, "3": 12, "2": 3}, "Coaching bot V4": {"5": 226, "4": 8, "1": 2, "3": 9, "2": 1}, "Coaching bot V6": {"5": 525, "4": 24, "3": 39, "1": 24, "2": 7}}, "Microlearning vaccines": {"Coaching bot V5": {"5": 133, "4": 10, "3": 18, "2": 6, "1": 7}, "Coaching bot V6": {"5": 533, "2": 12, "4": 18, "3": 42, "1": 21}}, "Visit check in": {"Coaching bot V4": {"5": 202, "4": 9, "3": 2}, "Coaching bot V6": {"5": 561, "1": 23, "4": 23, "3": 38, "2": 3}, "Coaching bot V5": {"1": 5, "5": 153, "3": 14, "2": 3, "4": 8}, "Coaching bot V3": {"5": 84, "4": 19, "3": 8, "2": 1, "1": 1}, "Control bot": {"5": 4, "1": 1}}, "Motivational interviewing": {"Coaching bot V4": {"5": 197, "4": 11, "3": 6, "1": 1, "2": 2}, "Coaching bot V6": {"3": 45, "5": 559, "4": 23, "2": 7, "1": 19}, "Coaching bot V5": {"4": 11, "5": 161, "1": 7, "3": 7, "2": 2}}}, "percentages": {"Scenario": {"Coaching bot V4": {"5": 87.14859437751004, "2": 1.6064257028112447, "3": 4.016064257028113, "4": 6.425702811244979, "1": 0.8032128514056224}, "Coaching bot V6": {"5": 85.64954682779457, "1": 4.229607250755287, "3": 5.13595166163142, "4": 3.3232628398791544, "2": 1.6616314199395772}, "Coaching bot V5": {"5": 76.19047619047619, "3": 6.41025641025641, "2": 4.395604395604396, "1": 5.128205128205128, "4": 7.875457875457875}, "Coaching bot V3": {"5": 88.74172185430463, "4": 5.960264900662252, "2": 0.6622516556291391, "1": 2.6490066225165565, "3": 1.9867549668874174}, "Control bot": {"5": 100.0}}, "Unknown": {"Control bot": {"5": 89.34924566539067, "2": 0.9682503940553928, "4": 6.327403737896869, "1": 1.7113262778653455, "3": 1.6437739247917134}, "Coaching bot V6": {"5": 89.36170212765957, "3": 8.51063829787234, "4": 2.127659574468085}}, "Microlearning": {"Coaching bot V5": {"5": 78.91891891891892, "4": 8.108108108108109, "1": 4.864864864864865, "3": 6.486486486486487, "2": 1.6216216216216217}, "Coaching bot V4": {"5": 91.869918699187, "4": 3.2520325203252036, "1": 0.8130081300813009, "3": 3.6585365853658534, "2": 0.40650406504065045}, "Coaching bot V6": {"5": 84.81421647819063, "4": 3.877221324717286, "3": 6.30048465266559, "1": 3.877221324717286, "2": 1.1308562197092082}}, "Microlearning vaccines": {"Coaching bot V5": {"5": 76.4367816091954, "4": 5.747126436781609, "3": 10.344827586206897, "2": 3.4482758620689653, "1": 4.022988505747127}, "Coaching bot V6": {"5": 85.14376996805112, "2": 1.9169329073482428, "4": 2.8753993610223643, "3": 6.7092651757188495, "1": 3.3546325878594248}}, "Visit check in": {"Coaching bot V4": {"5": 94.83568075117371, "4": 4.225352112676056, "3": 0.9389671361502347}, "Coaching bot V6": {"5": 86.57407407407408, "1": 3.5493827160493825, "4": 3.5493827160493825, "3": 5.864197530864197, "2": 0.4629629629629629}, "Coaching bot V5": {"1": 2.73224043715847, "5": 83.60655737704919, "3": 7.650273224043716, "2": 1.639344262295082, "4": 4.371584699453552}, "Coaching bot V3": {"5": 74.33628318584071, "4": 16.8141592920354, "3": 7.079646017699115, "2": 0.8849557522123894, "1": 0.8849557522123894}, "Control bot": {"5": 80.0, "1": 20.0}}, "Motivational interviewing": {"Coaching bot V4": {"5": 90.78341013824884, "4": 5.0691244239631335, "3": 2.7649769585253456, "1": 0.4608294930875576, "2": 0.9216589861751152}, "Coaching bot V6": {"3": 6.891271056661561, "5": 85.60490045941806, "4": 3.522205206738132, "2": 1.0719754977029097, "1": 2.909647779479326}, "Coaching bot V5": {"4": 5.851063829787234, "5": 85.63829787234043, "1": 3.723404255319149, "3": 3.723404255319149, "2": 1.0638297872340425}}}}};
+        
+        // Function to update tag table header based on mode
+        function updateTagTableHeader(mode) {
+            const header = document.getElementById('tagTableHeader');
+            if (!header) return;
+            
+            if (mode === 'gs_score') {
+                header.innerHTML = `
+                    <tr>
+                        <th rowspan="2">Tag</th>
+                        <th colspan="2">Total</th>
+                        <th colspan="2">Scenario</th>
+                        <th colspan="2">Microlearning</th>
+                        <th colspan="2">Microlearning vaccines</th>
+                        <th colspan="2">Motivational interviewing</th>
+                        <th colspan="2">Visit check in</th>
+                        <th colspan="2">Unknown</th>
+                    </tr>
+                    <tr>
+                        <th>Median GS</th>
+                        <th>-</th>
+                        <th>Median GS</th>
+                        <th>-</th>
+                        <th>Median GS</th>
+                        <th>-</th>
+                        <th>Median GS</th>
+                        <th>-</th>
+                        <th>Median GS</th>
+                        <th>-</th>
+                        <th>Median GS</th>
+                        <th>-</th>
+                        <th>Median GS</th>
+                        <th>-</th>
+                    </tr>
+                `;
+            } else {
+                header.innerHTML = `
+                    <tr>
+                        <th rowspan="2">Tag</th>
+                        <th colspan="2">Total Sessions</th>
+                        <th colspan="2">Scenario</th>
+                        <th colspan="2">Microlearning</th>
+                        <th colspan="2">Microlearning vaccines</th>
+                        <th colspan="2">Motivational interviewing</th>
+                        <th colspan="2">Visit check in</th>
+                        <th colspan="2">Unknown</th>
+                    </tr>
+                    <tr>
+                        <th>Count</th>
+                        <th>%</th>
+                        <th>Count</th>
+                        <th>%</th>
+                        <th>Count</th>
+                        <th>%</th>
+                        <th>Count</th>
+                        <th>%</th>
+                        <th>Count</th>
+                        <th>%</th>
+                        <th>Count</th>
+                        <th>%</th>
+                        <th>Count</th>
+                        <th>%</th>
+                    </tr>
+                `;
+            }
+        }
         
         // Function to update tag table based on selected versions and tags
         function updateTagTable() {
             const versionSelect = document.getElementById('versionFilterTags');
             const tagSelect = document.getElementById('tagFilterTags');
             const tableBody = document.getElementById('tagTableBody');
-            if (!versionSelect || !tagSelect || !tableBody || !tagCountsData) return;
+            const modeRadios = document.querySelectorAll('input[name="tagDisplayMode"]');
+            if (!versionSelect || !tagSelect || !tableBody || !modeRadios.length) return;
             
-            // Get selected versions
-            const selectedVersions = Array.from(versionSelect.selectedOptions).map(opt => opt.value);
-            const versionsToShow = selectedVersions.length > 0 ? selectedVersions : Object.keys(tagCountsData).filter(v => v !== 'All Versions');
+            // Get selected mode
+            const selectedMode = Array.from(modeRadios).find(r => r.checked)?.value || 'count';
             
-            // Get selected tags
-            const selectedTags = Array.from(tagSelect.selectedOptions).map(opt => opt.value);
-            const tagsToTrack = [
-                'safe', 'unsafe', 'acceptable', 'unacceptable',
-                'refrigerator_example', 'not_refrigerator_example',
-                'bot_performance_good', 'bot_performance_bad',
-                'coaching_good', 'coaching_undetermined', 'coaching_bad',
-                'engagement_good', 'engagement_bad',
-                'user_knowledge_good', 'user_knowledge_bad',
-                'user_ai_response'
-            ];
-            const tagsToShow = selectedTags.length > 0 ? selectedTags : tagsToTrack;
+            // Update header
+            updateTagTableHeader(selectedMode);
             
-            const methods = ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown'];
-            
-            // Calculate total tagged sessions per method across selected versions
-            const totalTaggedByMethod = {};
-            methods.forEach(method => totalTaggedByMethod[method] = 0);
-            let totalTaggedSessions = 0;
-            
-            versionsToShow.forEach(version => {
-                if (tagCountsData[version] && tagCountsData[version]['_tagged_sessions']) {
-                    totalTaggedSessions += tagCountsData[version]['_tagged_sessions'].total || 0;
-                    methods.forEach(method => {
-                        totalTaggedByMethod[method] += tagCountsData[version]['_tagged_sessions'][method] || 0;
-                    });
+            if (selectedMode === 'gs_score') {
+                if (!tagGScoresData || Object.keys(tagGScoresData).length === 0) {
+                    tableBody.innerHTML = '<tr><td colspan="15" class="text-center">No GS score data available</td></tr>';
+                    return;
                 }
-            });
-            
-            let html = '';
-            
-            // Generate rows for each selected tag
-            tagsToShow.forEach(tag => {
-                html += `<tr><td><strong>${tag}</strong></td>`;
                 
-                // Total count across selected versions
-                let totalCount = 0;
+                // Get selected versions
+                const selectedVersions = Array.from(versionSelect.selectedOptions).map(opt => opt.value);
+                const versionsToShow = selectedVersions.length > 0 ? selectedVersions : Object.keys(tagGScoresData).filter(v => v !== 'All Versions');
+                
+                // Get selected tags
+                const selectedTags = Array.from(tagSelect.selectedOptions).map(opt => opt.value);
+                const tagsToTrack = [
+                    'safe', 'unsafe', 'acceptable', 'unacceptable',
+                    'refrigerator_example', 'not_refrigerator_example',
+                    'bot_performance_good', 'bot_performance_bad',
+                    'coaching_good', 'coaching_undetermined', 'coaching_bad',
+                    'engagement_good', 'engagement_bad',
+                    'user_knowledge_good', 'user_knowledge_bad',
+                    'user_ai_response'
+                ];
+                const tagsToShow = selectedTags.length > 0 ? selectedTags : tagsToTrack;
+                
+                const methods = ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown'];
+                
+                let html = '';
+                
+                // Generate rows for each selected tag
+                tagsToShow.forEach(tag => {
+                    html += `<tr><td><strong>${tag}</strong></td>`;
+                    
+                    // Collect all GS scores for this tag across selected versions
+                    const allScores = [];
+                    versionsToShow.forEach(version => {
+                        if (tagGScoresData[version] && tagGScoresData[version][tag]) {
+                            const score = tagGScoresData[version][tag].total;
+                            if (score !== undefined && score !== null) {
+                                allScores.push(score);
+                            }
+                        }
+                    });
+                    
+                    // Calculate total median
+                    const totalMedian = allScores.length > 0 ? allScores.reduce((a, b) => a + b, 0) / allScores.length : null;
+                    if (totalMedian !== null) {
+                        // Calculate median properly
+                        const sorted = allScores.slice().sort((a, b) => a - b);
+                        const mid = Math.floor(sorted.length / 2);
+                        const median = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+                        html += `<td>${median.toFixed(1)}</td><td>-</td>`;
+                    } else {
+                        html += '<td>-</td><td>-</td>';
+                    }
+                    
+                    // Median by method (aggregated across selected versions)
+                    const methodScores = {};
+                    methods.forEach(method => methodScores[method] = []);
+                    
+                    versionsToShow.forEach(version => {
+                        if (tagGScoresData[version] && tagGScoresData[version][tag]) {
+                            methods.forEach(method => {
+                                const score = tagGScoresData[version][tag][method];
+                                if (score !== undefined && score !== null) {
+                                    methodScores[method].push(score);
+                                }
+                            });
+                        }
+                    });
+                    
+                    methods.forEach(method => {
+                        const scores = methodScores[method];
+                        if (scores.length > 0) {
+                            const sorted = scores.slice().sort((a, b) => a - b);
+                            const mid = Math.floor(sorted.length / 2);
+                            const median = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+                            html += `<td>${median.toFixed(1)}</td><td>-</td>`;
+                        } else {
+                            html += '<td>-</td><td>-</td>';
+                        }
+                    });
+                    
+                    html += '</tr>';
+                });
+                
+                // Add Total row (not applicable for GS scores, but keep for consistency)
+                html += '<tr><td><strong>Total</strong></td>';
+                html += '<td><strong>-</strong></td><td><strong>-</strong></td>';
+                methods.forEach(() => {
+                    html += '<td><strong>-</strong></td><td><strong>-</strong></td>';
+                });
+                html += '</tr>';
+                
+                tableBody.innerHTML = html;
+            } else {
+                // Count mode (original logic)
+                if (!tagCountsData) {
+                    tableBody.innerHTML = '<tr><td colspan="15" class="text-center">No tag data available</td></tr>';
+                    return;
+                }
+                
+                // Get selected versions
+                const selectedVersions = Array.from(versionSelect.selectedOptions).map(opt => opt.value);
+                const versionsToShow = selectedVersions.length > 0 ? selectedVersions : Object.keys(tagCountsData).filter(v => v !== 'All Versions');
+                
+                // Get selected tags
+                const selectedTags = Array.from(tagSelect.selectedOptions).map(opt => opt.value);
+                const tagsToTrack = [
+                    'safe', 'unsafe', 'acceptable', 'unacceptable',
+                    'refrigerator_example', 'not_refrigerator_example',
+                    'bot_performance_good', 'bot_performance_bad',
+                    'coaching_good', 'coaching_undetermined', 'coaching_bad',
+                    'engagement_good', 'engagement_bad',
+                    'user_knowledge_good', 'user_knowledge_bad',
+                    'user_ai_response'
+                ];
+                const tagsToShow = selectedTags.length > 0 ? selectedTags : tagsToTrack;
+                
+                const methods = ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown'];
+                
+                // Calculate total tagged sessions per method across selected versions
+                const totalTaggedByMethod = {};
+                methods.forEach(method => totalTaggedByMethod[method] = 0);
+                let totalTaggedSessions = 0;
+                
                 versionsToShow.forEach(version => {
-                    if (tagCountsData[version] && tagCountsData[version][tag]) {
-                        totalCount += tagCountsData[version][tag].total || 0;
+                    if (tagCountsData[version] && tagCountsData[version]['_tagged_sessions']) {
+                        totalTaggedSessions += tagCountsData[version]['_tagged_sessions'].total || 0;
+                        methods.forEach(method => {
+                            totalTaggedByMethod[method] += tagCountsData[version]['_tagged_sessions'][method] || 0;
+                        });
                     }
                 });
                 
-                // Total percentage
-                const totalPercentage = totalTaggedSessions > 0 ? (totalCount / totalTaggedSessions * 100) : 0;
-                html += `<td>${totalCount}</td><td>${totalPercentage.toFixed(1)}%</td>`;
+                let html = '';
                 
-                // Count by method (aggregated across selected versions)
-                const methodTotals = {};
-                methods.forEach(method => methodTotals[method] = 0);
+                // Generate rows for each selected tag
+                tagsToShow.forEach(tag => {
+                    html += `<tr><td><strong>${tag}</strong></td>`;
+                    
+                    // Total count across selected versions
+                    let totalCount = 0;
+                    versionsToShow.forEach(version => {
+                        if (tagCountsData[version] && tagCountsData[version][tag]) {
+                            totalCount += tagCountsData[version][tag].total || 0;
+                        }
+                    });
+                    
+                    // Total percentage
+                    const totalPercentage = totalTaggedSessions > 0 ? (totalCount / totalTaggedSessions * 100) : 0;
+                    html += `<td>${totalCount}</td><td>${totalPercentage.toFixed(1)}%</td>`;
+                    
+                    // Count by method (aggregated across selected versions)
+                    const methodTotals = {};
+                    methods.forEach(method => methodTotals[method] = 0);
+                    
+                    versionsToShow.forEach(version => {
+                        if (tagCountsData[version] && tagCountsData[version][tag]) {
+                            methods.forEach(method => {
+                                methodTotals[method] += tagCountsData[version][tag][method] || 0;
+                            });
+                        }
+                    });
+                    
+                    methods.forEach(method => {
+                        const count = methodTotals[method];
+                        // Percentage: count for this method / total count for this tag
+                        const percentage = totalCount > 0 ? (count / totalCount * 100) : 0;
+                        html += `<td>${count}</td><td>${percentage.toFixed(1)}%</td>`;
+                    });
+                    
+                    html += '</tr>';
+                });
+                
+                // Add Total row
+                html += '<tr><td><strong>Total</strong></td>';
+                html += `<td><strong>${totalTaggedSessions}</strong></td><td><strong>100.0%</strong></td>`;
+                
+                // Total by method - sum across selected versions
+                const totalByMethod = {};
+                methods.forEach(method => totalByMethod[method] = 0);
                 
                 versionsToShow.forEach(version => {
-                    if (tagCountsData[version] && tagCountsData[version][tag]) {
+                    if (tagCountsData[version] && tagCountsData[version]['_tagged_sessions']) {
                         methods.forEach(method => {
-                            methodTotals[method] += tagCountsData[version][tag][method] || 0;
+                            totalByMethod[method] += tagCountsData[version]['_tagged_sessions'][method] || 0;
                         });
                     }
                 });
                 
                 methods.forEach(method => {
-                    const count = methodTotals[method];
-                    // Percentage: count for this method / total count for this tag
-                    const percentage = totalCount > 0 ? (count / totalCount * 100) : 0;
-                    html += `<td>${count}</td><td>${percentage.toFixed(1)}%</td>`;
+                    const count = totalByMethod[method];
+                    const percentage = totalTaggedSessions > 0 ? (count / totalTaggedSessions * 100) : 0;
+                    html += `<td><strong>${count}</strong></td><td><strong>${percentage.toFixed(1)}%</strong></td>`;
                 });
                 
                 html += '</tr>';
-            });
+                
+                tableBody.innerHTML = html;
+            }
+        }
+        
+        // Function to update tag combination table header based on mode
+        function updateTagCombinationTableHeader(mode) {
+            const header = document.getElementById('tagCombinationTableHeader');
+            if (!header) return;
             
-            // Add Total row
-            html += '<tr><td><strong>Total</strong></td>';
-            html += `<td><strong>${totalTaggedSessions}</strong></td><td><strong>100.0%</strong></td>`;
+            const versionNames = ["Control bot", "Coaching bot V3", "Coaching bot V4", "Coaching bot V5", "Coaching bot V6"];
             
-            // Total by method - sum across selected versions
-            const totalByMethod = {};
-            methods.forEach(method => totalByMethod[method] = 0);
-            
-            versionsToShow.forEach(version => {
-                if (tagCountsData[version] && tagCountsData[version]['_tagged_sessions']) {
-                    methods.forEach(method => {
-                        totalByMethod[method] += tagCountsData[version]['_tagged_sessions'][method] || 0;
-                    });
-                }
-            });
-            
-            methods.forEach(method => {
-                const count = totalByMethod[method];
-                const percentage = totalTaggedSessions > 0 ? (count / totalTaggedSessions * 100) : 0;
-                html += `<td><strong>${count}</strong></td><td><strong>${percentage.toFixed(1)}%</strong></td>`;
-            });
-            
-            html += '</tr>';
-            
-            tableBody.innerHTML = html;
+            if (mode === 'gs_score') {
+                header.innerHTML = `
+                    <tr>
+                        <th>Method</th>
+                        ${versionNames.map(v => `<th colspan="2">${v}</th>`).join('')}
+                    </tr>
+                    <tr>
+                        <th></th>
+                        ${versionNames.map(() => '<th>Median GS</th><th>-</th>').join('')}
+                    </tr>
+                `;
+            } else {
+                header.innerHTML = `
+                    <tr>
+                        <th>Method</th>
+                        ${versionNames.map(v => `<th colspan="2">${v}</th>`).join('')}
+                    </tr>
+                    <tr>
+                        <th></th>
+                        ${versionNames.map(() => '<th>Count</th><th>%</th>').join('')}
+                    </tr>
+                `;
+            }
         }
         
         // Function to update tag combination table
         function updateTagCombinationTable() {
             const select = document.getElementById('tagCombinationFilter');
             const tableBody = document.getElementById('tagCombinationTableBody');
-            if (!select || !tableBody || !tagCombinationData) return;
+            const modeRadios = document.querySelectorAll('input[name="tagCombinationDisplayMode"]');
+            if (!select || !tableBody || !modeRadios.length) return;
+            
+            // Get selected mode
+            const selectedMode = Array.from(modeRadios).find(r => r.checked)?.value || 'count';
+            
+            // Update header
+            updateTagCombinationTableHeader(selectedMode);
             
             // Get selected tags
             const selectedTags = Array.from(select.selectedOptions).map(opt => opt.value);
@@ -1071,47 +1369,107 @@
             const methods = ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown'];
             const versionNames = ["Control bot", "Coaching bot V3", "Coaching bot V4", "Coaching bot V5", "Coaching bot V6"];
             
-            // Calculate counts for each version/method combination
-            const counts = {};
-            const totalTagged = {};
-            
-            versionNames.forEach(version => {
-                counts[version] = {};
-                totalTagged[version] = {};
-                methods.forEach(method => {
-                    counts[version][method] = 0;
-                    totalTagged[version][method] = 0;
-                    
-                    if (tagCombinationData[version] && tagCombinationData[version][method]) {
-                        const sessionsData = tagCombinationData[version][method].sessions || {};
-                        totalTagged[version][method] = tagCombinationData[version][method].total_tagged || 0;
-                        
-                        // Count sessions that have ALL selected tags
-                        Object.keys(sessionsData).forEach(sessionId => {
-                            const sessionTags = sessionsData[sessionId] || [];
-                            const hasAllTags = selectedTags.every(tag => sessionTags.includes(tag));
-                            if (hasAllTags) {
-                                counts[version][method]++;
-                            }
-                        });
-                    }
-                });
-            });
-            
-            // Generate table rows
-            let html = '';
-            methods.forEach(method => {
-                html += `<tr><td><strong>${method}</strong></td>`;
+            if (selectedMode === 'gs_score') {
+                if (!tagCombinationGSData || Object.keys(tagCombinationGSData).length === 0) {
+                    const numCols = 11;
+                    tableBody.innerHTML = '<tr><td colspan="' + numCols + '" class="text-center">No GS score data available</td></tr>';
+                    return;
+                }
+                
+                // Calculate GS scores for each version/method combination
+                const gsScores = {};
+                
                 versionNames.forEach(version => {
-                    const count = counts[version][method] || 0;
-                    const total = totalTagged[version][method] || 0;
-                    const percentage = total > 0 ? (count / total * 100) : 0;
-                    html += `<td>${count}</td><td>${percentage.toFixed(1)}%</td>`;
+                    gsScores[version] = {};
+                    methods.forEach(method => {
+                        gsScores[version][method] = [];
+                        
+                        if (tagCombinationGSData[version] && tagCombinationGSData[version][method]) {
+                            const sessionsData = tagCombinationGSData[version][method].sessions || {};
+                            const gsScoresData = tagCombinationGSData[version][method].gs_scores || {};
+                            
+                            // Collect GS scores for sessions that have ALL selected tags
+                            Object.keys(sessionsData).forEach(sessionId => {
+                                const sessionTags = sessionsData[sessionId] || [];
+                                const hasAllTags = selectedTags.every(tag => sessionTags.includes(tag));
+                                if (hasAllTags && gsScoresData[sessionId] !== undefined && gsScoresData[sessionId] !== null) {
+                                    gsScores[version][method].push(gsScoresData[sessionId]);
+                                }
+                            });
+                        }
+                    });
                 });
-                html += '</tr>';
-            });
-            
-            tableBody.innerHTML = html;
+                
+                // Generate table rows
+                let html = '';
+                methods.forEach(method => {
+                    html += `<tr><td><strong>${method}</strong></td>`;
+                    versionNames.forEach(version => {
+                        const scores = gsScores[version][method] || [];
+                        if (scores.length > 0) {
+                            // Calculate median
+                            const sorted = scores.slice().sort((a, b) => a - b);
+                            const mid = Math.floor(sorted.length / 2);
+                            const median = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+                            html += `<td>${median.toFixed(1)}</td><td>-</td>`;
+                        } else {
+                            html += '<td>-</td><td>-</td>';
+                        }
+                    });
+                    html += '</tr>';
+                });
+                
+                tableBody.innerHTML = html;
+            } else {
+                // Count mode (original logic)
+                if (!tagCombinationData) {
+                    const numCols = 11;
+                    tableBody.innerHTML = '<tr><td colspan="' + numCols + '" class="text-center">No tag data available</td></tr>';
+                    return;
+                }
+                
+                // Calculate counts for each version/method combination
+                const counts = {};
+                const totalTagged = {};
+                
+                versionNames.forEach(version => {
+                    counts[version] = {};
+                    totalTagged[version] = {};
+                    methods.forEach(method => {
+                        counts[version][method] = 0;
+                        totalTagged[version][method] = 0;
+                        
+                        if (tagCombinationData[version] && tagCombinationData[version][method]) {
+                            const sessionsData = tagCombinationData[version][method].sessions || {};
+                            totalTagged[version][method] = tagCombinationData[version][method].total_tagged || 0;
+                            
+                            // Count sessions that have ALL selected tags
+                            Object.keys(sessionsData).forEach(sessionId => {
+                                const sessionTags = sessionsData[sessionId] || [];
+                                const hasAllTags = selectedTags.every(tag => sessionTags.includes(tag));
+                                if (hasAllTags) {
+                                    counts[version][method]++;
+                                }
+                            });
+                        }
+                    });
+                });
+                
+                // Generate table rows
+                let html = '';
+                methods.forEach(method => {
+                    html += `<tr><td><strong>${method}</strong></td>`;
+                    versionNames.forEach(version => {
+                        const count = counts[version][method] || 0;
+                        const total = totalTagged[version][method] || 0;
+                        const percentage = total > 0 ? (count / total * 100) : 0;
+                        html += `<td>${count}</td><td>${percentage.toFixed(1)}%</td>`;
+                    });
+                    html += '</tr>';
+                });
+                
+                tableBody.innerHTML = html;
+            }
         }
         
         // Table rows for refrigerator filter toggle (as JSON strings for safe embedding)
@@ -1126,6 +1484,121 @@
         
         let progressionChart = null;
         let volumeChart = null;
+        let ratingDistributionChart = null;
+        
+        // Function to update rating distribution chart
+        function updateRatingDistributionChart() {
+            const methodSelect = document.getElementById('ratingChartMethodFilter');
+            const versionSelect = document.getElementById('ratingChartVersionFilter');
+            const canvas = document.getElementById('ratingDistributionChart');
+            
+            if (!methodSelect || !versionSelect || !canvas || !ratingDistributionData) return;
+            
+            const selectedMethod = methodSelect.value;
+            const selectedVersion = versionSelect.value;
+            
+            // Get data based on filters
+            let percentages = {};
+            let total = 0;
+            
+            if (selectedMethod === 'all' && selectedVersion === 'all') {
+                // All sessions
+                percentages = ratingDistributionData.all?.percentages || {};
+                total = ratingDistributionData.all?.total || 0;
+            } else if (selectedMethod !== 'all' && selectedVersion === 'all') {
+                // Filter by method only
+                const methodData = ratingDistributionData.by_method?.percentages?.[selectedMethod] || {};
+                const methodCounts = ratingDistributionData.by_method?.counts?.[selectedMethod] || {};
+                percentages = methodData;
+                total = Object.values(methodCounts).reduce((sum, count) => sum + count, 0);
+            } else if (selectedMethod === 'all' && selectedVersion !== 'all') {
+                // Filter by version only
+                const versionData = ratingDistributionData.by_version?.percentages?.[selectedVersion] || {};
+                const versionCounts = ratingDistributionData.by_version?.counts?.[selectedVersion] || {};
+                percentages = versionData;
+                total = Object.values(versionCounts).reduce((sum, count) => sum + count, 0);
+            } else {
+                // Filter by both method and version
+                const methodVersionData = ratingDistributionData.by_method_version?.percentages?.[selectedMethod]?.[selectedVersion] || {};
+                const methodVersionCounts = ratingDistributionData.by_method_version?.counts?.[selectedMethod]?.[selectedVersion] || {};
+                percentages = methodVersionData;
+                total = Object.values(methodVersionCounts).reduce((sum, count) => sum + count, 0);
+            }
+            
+            // Prepare data for chart (ratings 1-5)
+            const labels = ['1', '2', '3', '4', '5'];
+            const data = labels.map(rating => percentages[parseInt(rating)] || 0);
+            
+            // Destroy existing chart if it exists
+            if (ratingDistributionChart) {
+                ratingDistributionChart.destroy();
+            }
+            
+            // Create new chart
+            const ctx = canvas.getContext('2d');
+            ratingDistributionChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Percentage of Sessions',
+                        data: data,
+                        backgroundColor: 'rgba(54, 162, 235, 0.6)',
+                        borderColor: 'rgba(54, 162, 235, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const rating = context.label;
+                                    const percentage = context.parsed.y;
+                                    const count = Math.round((percentage / 100) * total);
+                                    return `Rating ${rating}: ${percentage.toFixed(1)}% (${count} sessions)`;
+                                }
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: `Total Sessions: ${total}`
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100,
+                            ticks: {
+                                callback: function(value) {
+                                    return value + '%';
+                                }
+                            },
+                            title: {
+                                display: true,
+                                text: 'Percentage of Sessions (%)'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Rating'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Initialize rating distribution chart on page load
+        if (document.getElementById('ratingDistributionChart')) {
+            updateRatingDistributionChart();
+        }
         
         function filterProgressionDataByParticipant(progressionDataView, progressionSessionData, participantIds) {
             if (!participantIds || participantIds.length === 0) {
@@ -1961,6 +2434,11 @@
             const table = document.getElementById('medianWordsTable');
             if (!table || !data) return;
             
+            // Get display mode
+            const modeRadios = document.querySelectorAll('input[name="wordsDisplayMode"]');
+            const selectedMode = modeRadios.length > 0 ? Array.from(modeRadios).find(r => r.checked)?.value || 'per_session' : 'per_session';
+            const isPerMessage = selectedMode === 'per_message';
+            
             const tbody = table.querySelector('tbody');
             if (!tbody) return;
             
@@ -1986,25 +2464,55 @@
                 data.forEach((metric, idx) => {
                     const cell = document.createElement('td');
                     const version_name = metric.version_name || '';
-                    const tableData = excludeOutliers ? metric.median_words_by_method_filtered : metric.median_words_by_method;
-                    const method_data = tableData[method];
+                    const wordsTableData = excludeOutliers ? metric.median_words_by_method_filtered : metric.median_words_by_method;
+                    const messagesTableData = excludeOutliers ? metric.median_messages_by_method_filtered : metric.median_messages_by_method;
+                    const words_method_data = wordsTableData[method];
+                    const messages_method_data = messagesTableData[method];
                     
-                    let value = 0.0;
-                    if (method_data === undefined || method_data === null) {
-                        value = 0.0;
-                    } else if (typeof method_data === 'number') {
-                        // Direct number value (already filtered by version)
-                        value = method_data;
-                    } else if (typeof method_data === 'object') {
-                        // Object with version keys
+                    let wordsValue = 0.0;
+                    let messagesValue = 0.0;
+                    
+                    // Get words value
+                    if (words_method_data === undefined || words_method_data === null) {
+                        wordsValue = 0.0;
+                    } else if (typeof words_method_data === 'number') {
+                        wordsValue = words_method_data;
+                    } else if (typeof words_method_data === 'object') {
                         if (version_name === 'Control bot') {
                             if (method === 'Unknown') {
-                                value = method_data.Control || 0.0;
+                                wordsValue = words_method_data.Control || 0.0;
                             }
                         } else {
                             const version_key = version_name.replace('Coaching bot ', '');
-                            value = method_data[version_key] || 0.0;
+                            wordsValue = words_method_data[version_key] || 0.0;
                         }
+                    }
+                    
+                    // Get messages value
+                    if (messages_method_data === undefined || messages_method_data === null) {
+                        messagesValue = 0.0;
+                    } else if (typeof messages_method_data === 'number') {
+                        messagesValue = messages_method_data;
+                    } else if (typeof messages_method_data === 'object') {
+                        if (version_name === 'Control bot') {
+                            if (method === 'Unknown') {
+                                messagesValue = messages_method_data.Control || 0.0;
+                            }
+                        } else {
+                            const version_key = version_name.replace('Coaching bot ', '');
+                            messagesValue = messages_method_data[version_key] || 0.0;
+                        }
+                    }
+                    
+                    // Calculate final value
+                    let value = 0.0;
+                    if (isPerMessage) {
+                        // Divide words by messages
+                        if (messagesValue > 0 && wordsValue > 0) {
+                            value = wordsValue / messagesValue;
+                        }
+                    } else {
+                        value = wordsValue;
                     }
                     
                     if (value > 0) {

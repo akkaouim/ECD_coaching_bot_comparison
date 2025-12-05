@@ -862,6 +862,122 @@ class SimpleVersionComparisonDashboard:
                     average_ratings[method][version] = 0.0
         
         return average_ratings
+    
+    def calculate_rating_distribution(self, sessions: List[Dict], messages_data: Dict) -> Dict:
+        """Calculate rating distribution (counts and percentages for ratings 1-5) by method and version
+        
+        Returns:
+            Dictionary with structure: {
+                'all': {rating: count},  # All sessions combined
+                'by_method': {method: {rating: count}},
+                'by_version': {version: {rating: count}},
+                'by_method_version': {method: {version: {rating: count}}}
+            }
+        """
+        from collections import defaultdict
+        
+        # Initialize data structures
+        all_ratings = defaultdict(int)  # {rating: count}
+        by_method = defaultdict(lambda: defaultdict(int))  # {method: {rating: count}}
+        by_version = defaultdict(lambda: defaultdict(int))  # {version: {rating: count}}
+        by_method_version = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))  # {method: {version: {rating: count}}}
+        
+        # Process each session
+        for session in sessions:
+            session_id = session.get('id')
+            session_messages = messages_data.get(session_id, [])
+            
+            # Skip split sessions and test sessions
+            if self.should_exclude_session(session, session_messages):
+                continue
+            
+            # Get session rating
+            session_rating = self.extract_session_rating(session, session_messages)
+            if session_rating is None:
+                continue
+            
+            # Convert to integer (ratings are 1-5)
+            rating = int(session_rating)
+            if rating < 1 or rating > 5:
+                continue
+            
+            # Detect coaching method
+            detected_method = self.detect_coaching_method(session, session_messages)
+            
+            # Determine version
+            version = None
+            for version_name, version_config in self.coaching_bot_versions.items():
+                if self.matches_version(session, version_config, session_messages):
+                    if 'Control' in version_name:
+                        version = 'Control bot'
+                    elif 'V3' in version_name:
+                        version = 'Coaching bot V3'
+                    elif 'V4' in version_name:
+                        version = 'Coaching bot V4'
+                    elif 'V5' in version_name:
+                        version = 'Coaching bot V5'
+                    elif 'V6' in version_name:
+                        version = 'Coaching bot V6'
+                    break
+            
+            if not version:
+                continue
+            
+            # For Control bot, use 'Unknown' method if no method detected
+            if version == 'Control bot' and not detected_method:
+                detected_method = 'Unknown'
+            
+            # Count ratings
+            all_ratings[rating] += 1
+            by_method[detected_method][rating] += 1
+            by_version[version][rating] += 1
+            by_method_version[detected_method][version][rating] += 1
+        
+        # Calculate percentages
+        total_all = sum(all_ratings.values())
+        all_percentages = {rating: (count / total_all * 100) if total_all > 0 else 0 
+                          for rating, count in all_ratings.items()}
+        
+        by_method_percentages = {}
+        for method, ratings in by_method.items():
+            total = sum(ratings.values())
+            by_method_percentages[method] = {rating: (count / total * 100) if total > 0 else 0 
+                                            for rating, count in ratings.items()}
+        
+        by_version_percentages = {}
+        for version, ratings in by_version.items():
+            total = sum(ratings.values())
+            by_version_percentages[version] = {rating: (count / total * 100) if total > 0 else 0 
+                                              for rating, count in ratings.items()}
+        
+        by_method_version_percentages = {}
+        for method, version_data in by_method_version.items():
+            by_method_version_percentages[method] = {}
+            for version, ratings in version_data.items():
+                total = sum(ratings.values())
+                by_method_version_percentages[method][version] = {rating: (count / total * 100) if total > 0 else 0 
+                                                                  for rating, count in ratings.items()}
+        
+        return {
+            'all': {
+                'counts': dict(all_ratings),
+                'percentages': all_percentages,
+                'total': total_all
+            },
+            'by_method': {
+                'counts': {method: dict(ratings) for method, ratings in by_method.items()},
+                'percentages': by_method_percentages
+            },
+            'by_version': {
+                'counts': {version: dict(ratings) for version, ratings in by_version.items()},
+                'percentages': by_version_percentages
+            },
+            'by_method_version': {
+                'counts': {method: {version: dict(ratings) for version, ratings in version_data.items()} 
+                          for method, version_data in by_method_version.items()},
+                'percentages': by_method_version_percentages
+            }
+        }
 
     def calculate_session_volume_by_time(self, sessions: List[Dict], messages_data: Dict, aggregation: str = 'week', refrigerator_only: bool = False, return_session_mapping: bool = False) -> Dict:
         """
@@ -2483,6 +2599,129 @@ class SimpleVersionComparisonDashboard:
         
         return dict(tag_counts)
     
+    def calculate_tag_gs_scores_by_version_and_method(self, sessions: List[Dict], messages_data: Dict, gs_data: Dict) -> Dict:
+        """Calculate median GS scores for sessions with each tag, grouped by version and method"""
+        # Define all tags to track
+        tags_to_track = [
+            'safe', 'unsafe', 'acceptable', 'unacceptable',
+            'refrigerator_example', 'not_refrigerator_example',
+            'bot_performance_good', 'bot_performance_bad',
+            'coaching_good', 'coaching_undetermined', 'coaching_bad',
+            'engagement_good', 'engagement_bad',
+            'user_knowledge_good', 'user_knowledge_bad',
+            'user_ai_response'
+        ]
+        
+        methods = ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown']
+        
+        # Structure: {version: {tag: {method: [list of GS scores]}}}
+        tag_gs_scores = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
+        
+        # Also track overall GS scores (all versions combined)
+        overall_gs_scores = defaultdict(lambda: defaultdict(list))  # {tag: {method: [GS scores]}}
+        overall_gs_scores_total = defaultdict(list)  # {tag: [all GS scores]}
+        
+        # Create lowercase mapping for case-insensitive lookup
+        gs_data_lower = {}
+        for pid, gs_info in gs_data.items():
+            gs_data_lower[pid.lower()] = gs_info
+        
+        for session in sessions:
+            session_id = session.get('id')
+            if not session_id:
+                continue
+            
+            messages = messages_data.get(session_id, [])
+            
+            # Skip split sessions and test sessions
+            if self.should_exclude_session(session, messages):
+                continue
+            
+            # Only count tagged sessions
+            if not self.is_tagged_session(session, messages):
+                continue
+            
+            # Get participant ID and GS score
+            participant_id = session.get('participant', {}).get('identifier', '')
+            if not participant_id:
+                continue
+            
+            # Look up GS score (case-insensitive)
+            gs_info = gs_data.get(participant_id) or gs_data_lower.get(participant_id.lower())
+            if not gs_info or gs_info.get('score') is None:
+                continue
+            
+            gs_score = gs_info['score']
+            
+            # Determine version
+            version = None
+            for version_name, version_config in self.coaching_bot_versions.items():
+                if self.matches_version(session, version_config, messages):
+                    if 'Control' in version_name:
+                        version = 'Control bot'
+                    elif 'V3' in version_name:
+                        version = 'Coaching bot V3'
+                    elif 'V4' in version_name:
+                        version = 'Coaching bot V4'
+                    elif 'V5' in version_name:
+                        version = 'Coaching bot V5'
+                    elif 'V6' in version_name:
+                        version = 'Coaching bot V6'
+                    break
+            
+            if not version:
+                continue
+            
+            # Determine coaching method
+            method = self.detect_coaching_method(session, messages)
+            
+            # Check each tag
+            for tag in tags_to_track:
+                if self.has_tag(session, messages, tag):
+                    # Add GS score for this version/method combination
+                    tag_gs_scores[version][tag][method].append(gs_score)
+                    
+                    # Add to overall (all versions)
+                    overall_gs_scores[tag][method].append(gs_score)
+                    overall_gs_scores_total[tag].append(gs_score)
+        
+        # Calculate medians
+        # Structure: {version: {tag: {method: median_score, 'total': median_score}}}
+        tag_gs_medians = defaultdict(lambda: defaultdict(dict))
+        
+        for version in tag_gs_scores:
+            for tag in tags_to_track:
+                if tag in tag_gs_scores[version]:
+                    # Calculate median for each method
+                    for method in methods:
+                        scores = tag_gs_scores[version][tag].get(method, [])
+                        if scores:
+                            tag_gs_medians[version][tag][method] = statistics.median(scores)
+                    
+                    # Calculate total median (all methods combined)
+                    all_scores = []
+                    for method in methods:
+                        all_scores.extend(tag_gs_scores[version][tag].get(method, []))
+                    if all_scores:
+                        tag_gs_medians[version][tag]['total'] = statistics.median(all_scores)
+        
+        # Add overall medians (all versions combined)
+        tag_gs_medians['All Versions'] = {}
+        for tag in tags_to_track:
+            tag_gs_medians['All Versions'][tag] = {}
+            # Calculate median for each method
+            for method in methods:
+                scores = overall_gs_scores[tag].get(method, [])
+                if scores:
+                    tag_gs_medians['All Versions'][tag][method] = statistics.median(scores)
+            
+            # Calculate total median (all methods combined)
+            all_scores = overall_gs_scores_total[tag]
+            if all_scores:
+                tag_gs_medians['All Versions'][tag]['total'] = statistics.median(all_scores)
+        
+        return dict(tag_gs_medians)
+    
     def prepare_tag_combination_data(self, sessions: List[Dict], messages_data: Dict) -> Dict:
         """Prepare data structure for tag combination calculations"""
         tags_to_track = [
@@ -2560,11 +2799,112 @@ class SimpleVersionComparisonDashboard:
         
         return dict(result)
     
-    def generate_tag_table_rows(self, tag_counts: Dict, metrics: List[Dict], selected_versions: List[str] = None, selected_tags: List[str] = None) -> str:
-        """Generate HTML rows for tag counts table with count and percentage columns"""
-        if not tag_counts:
-            return "<tr><td colspan='14' class='text-center'>No tag data available</td></tr>"
+    def prepare_tag_combination_gs_data(self, sessions: List[Dict], messages_data: Dict, gs_data: Dict) -> Dict:
+        """Prepare GS score data structure for tag combination calculations"""
+        tags_to_track = [
+            'safe', 'unsafe', 'acceptable', 'unacceptable',
+            'refrigerator_example', 'not_refrigerator_example',
+            'bot_performance_good', 'bot_performance_bad',
+            'coaching_good', 'coaching_undetermined', 'coaching_bad',
+            'engagement_good', 'engagement_bad',
+            'user_knowledge_good', 'user_knowledge_bad',
+            'user_ai_response'
+        ]
         
+        # Structure: {version: {method: {session_id: {tags: [list], participant_id: str, gs_score: int}}}}
+        session_data_by_version_method = defaultdict(lambda: defaultdict(dict))
+        
+        # Create lowercase mapping for case-insensitive lookup
+        gs_data_lower = {}
+        for pid, gs_info in gs_data.items():
+            gs_data_lower[pid.lower()] = gs_info
+        
+        for session in sessions:
+            session_id = session.get('id')
+            if not session_id:
+                continue
+            
+            messages = messages_data.get(session_id, [])
+            
+            # Skip split sessions and test sessions
+            if self.should_exclude_session(session, messages):
+                continue
+            
+            # Only count tagged sessions
+            if not self.is_tagged_session(session, messages):
+                continue
+            
+            # Get participant ID and GS score
+            participant_id = session.get('participant', {}).get('identifier', '')
+            if not participant_id:
+                continue
+            
+            # Look up GS score (case-insensitive)
+            gs_info = gs_data.get(participant_id) or gs_data_lower.get(participant_id.lower())
+            if not gs_info or gs_info.get('score') is None:
+                continue
+            
+            gs_score = gs_info['score']
+            
+            # Determine version
+            version = None
+            for version_name, version_config in self.coaching_bot_versions.items():
+                if self.matches_version(session, version_config, messages):
+                    if 'Control' in version_name:
+                        version = 'Control bot'
+                    elif 'V3' in version_name:
+                        version = 'Coaching bot V3'
+                    elif 'V4' in version_name:
+                        version = 'Coaching bot V4'
+                    elif 'V5' in version_name:
+                        version = 'Coaching bot V5'
+                    elif 'V6' in version_name:
+                        version = 'Coaching bot V6'
+                    break
+            
+            if not version:
+                continue
+            
+            # Determine coaching method
+            method = self.detect_coaching_method(session, messages)
+            
+            # Collect tags for this session
+            session_tags = []
+            for tag in tags_to_track:
+                if self.has_tag(session, messages, tag):
+                    session_tags.append(tag)
+            
+            if session_tags:
+                session_data_by_version_method[version][method][session_id] = {
+                    'tags': session_tags,
+                    'participant_id': participant_id,
+                    'gs_score': gs_score
+                }
+        
+        # Convert to a format suitable for JSON
+        result = {}
+        for version, method_data in session_data_by_version_method.items():
+            result[version] = {}
+            for method, sessions_data in method_data.items():
+                result[version][method] = {
+                    'sessions': {sid: data['tags'] for sid, data in sessions_data.items()},
+                    'gs_scores': {sid: data['gs_score'] for sid, data in sessions_data.items()},
+                    'total_tagged': len(sessions_data)
+                }
+        
+        return dict(result)
+    
+    def generate_tag_table_rows(self, tag_counts: Dict, metrics: List[Dict], selected_versions: List[str] = None, selected_tags: List[str] = None, mode: str = 'count', tag_gs_scores: Dict = None) -> str:
+        """Generate HTML rows for tag counts table with count and percentage columns, or GS score medians
+        
+        Args:
+            tag_counts: Tag count data (for count mode)
+            metrics: List of version metrics
+            selected_versions: List of selected versions to filter
+            selected_tags: List of selected tags to filter
+            mode: 'count' or 'gs_score'
+            tag_gs_scores: GS score median data (for gs_score mode)
+        """
         tags_to_track = [
             'safe', 'unsafe', 'acceptable', 'unacceptable',
             'refrigerator_example', 'not_refrigerator_example',
@@ -2588,71 +2928,135 @@ class SimpleVersionComparisonDashboard:
             # Default: all versions
             version_names = [m['version_name'] for m in metrics]
         else:
-            version_names = [v for v in selected_versions if v in tag_counts]
+            if mode == 'count':
+                version_names = [v for v in selected_versions if v in tag_counts]
+            else:
+                version_names = [v for v in selected_versions if v in (tag_gs_scores or {})]
         
-        rows = ""
-        
-        # Calculate total tagged sessions per method across selected versions
-        total_tagged_by_method = defaultdict(int)
-        for version in version_names:
-            if version in tag_counts and '_tagged_sessions' in tag_counts[version]:
-                for method in methods:
-                    total_tagged_by_method[method] += tag_counts[version]['_tagged_sessions'].get(method, 0)
-        
-        # Calculate total tagged sessions across all selected versions
-        total_tagged_sessions = sum(total_tagged_by_method.values())
-        
-        # Generate rows for each tag
-        for tag in tags_to_show:
-            row = f"<tr><td><strong>{tag}</strong></td>"
+        if mode == 'count':
+            if not tag_counts:
+                return "<tr><td colspan='14' class='text-center'>No tag data available</td></tr>"
             
-            # Total count across all selected versions
-            total_count = 0
+            rows = ""
+            
+            # Calculate total tagged sessions per method across selected versions
+            total_tagged_by_method = defaultdict(int)
             for version in version_names:
-                if version in tag_counts and tag in tag_counts[version]:
-                    total_count += tag_counts[version][tag].get('total', 0)
-            
-            # Total percentage
-            total_percentage = (total_count / total_tagged_sessions * 100) if total_tagged_sessions > 0 else 0
-            row += f"<td>{total_count}</td><td>{total_percentage:.1f}%</td>"
-            
-            # Count by method (aggregated across selected versions)
-            method_totals = defaultdict(int)
-            for version in version_names:
-                if version in tag_counts and tag in tag_counts[version]:
+                if version in tag_counts and '_tagged_sessions' in tag_counts[version]:
                     for method in methods:
-                        method_totals[method] += tag_counts[version][tag].get(method, 0)
+                        total_tagged_by_method[method] += tag_counts[version]['_tagged_sessions'].get(method, 0)
+            
+            # Calculate total tagged sessions across all selected versions
+            total_tagged_sessions = sum(total_tagged_by_method.values())
+            
+            # Generate rows for each tag
+            for tag in tags_to_show:
+                row = f"<tr><td><strong>{tag}</strong></td>"
+                
+                # Total count across all selected versions
+                total_count = 0
+                for version in version_names:
+                    if version in tag_counts and tag in tag_counts[version]:
+                        total_count += tag_counts[version][tag].get('total', 0)
+                
+                # Total percentage
+                total_percentage = (total_count / total_tagged_sessions * 100) if total_tagged_sessions > 0 else 0
+                row += f"<td>{total_count}</td><td>{total_percentage:.1f}%</td>"
+                
+                # Count by method (aggregated across selected versions)
+                method_totals = defaultdict(int)
+                for version in version_names:
+                    if version in tag_counts and tag in tag_counts[version]:
+                        for method in methods:
+                            method_totals[method] += tag_counts[version][tag].get(method, 0)
+                
+                for method in methods:
+                    count = method_totals[method]
+                    # Percentage: count for this method / total count for this tag
+                    percentage = (count / total_count * 100) if total_count > 0 else 0
+                    row += f"<td>{count}</td><td>{percentage:.1f}%</td>"
+                
+                row += "</tr>"
+                rows += row
+            
+            # Add Total row
+            total_row = "<tr><td><strong>Total</strong></td>"
+            total_row += f"<td><strong>{total_tagged_sessions}</strong></td><td><strong>100.0%</strong></td>"
+            
+            # Total by method - sum across selected versions
+            total_by_method = defaultdict(int)
+            for version in version_names:
+                if version in tag_counts and '_tagged_sessions' in tag_counts[version]:
+                    for method in methods:
+                        method_count = tag_counts[version]['_tagged_sessions'].get(method, 0)
+                        total_by_method[method] += method_count
             
             for method in methods:
-                count = method_totals[method]
-                # Percentage: count for this method / total count for this tag
-                percentage = (count / total_count * 100) if total_count > 0 else 0
-                row += f"<td>{count}</td><td>{percentage:.1f}%</td>"
+                count = total_by_method[method]
+                percentage = (count / total_tagged_sessions * 100) if total_tagged_sessions > 0 else 0
+                total_row += f"<td><strong>{count}</strong></td><td><strong>{percentage:.1f}%</strong></td>"
             
-            row += "</tr>"
-            rows += row
+            total_row += "</tr>"
+            rows += total_row
+            
+            return rows
         
-        # Add Total row
-        total_row = "<tr><td><strong>Total</strong></td>"
-        total_row += f"<td><strong>{total_tagged_sessions}</strong></td><td><strong>100.0%</strong></td>"
-        
-        # Total by method - sum across selected versions
-        total_by_method = defaultdict(int)
-        for version in version_names:
-            if version in tag_counts and '_tagged_sessions' in tag_counts[version]:
+        else:  # mode == 'gs_score'
+            if not tag_gs_scores:
+                return "<tr><td colspan='14' class='text-center'>No GS score data available</td></tr>"
+            
+            rows = ""
+            
+            # Generate rows for each tag
+            for tag in tags_to_show:
+                row = f"<tr><td><strong>{tag}</strong></td>"
+                
+                # Collect all GS scores for this tag across selected versions
+                all_scores = []
+                for version in version_names:
+                    if version in tag_gs_scores and tag in tag_gs_scores[version]:
+                        score = tag_gs_scores[version][tag].get('total')
+                        if score is not None:
+                            all_scores.append(score)
+                
+                # Calculate total median
+                total_median = statistics.median(all_scores) if all_scores else None
+                if total_median is not None:
+                    row += f"<td>{total_median:.1f}</td><td>-</td>"
+                else:
+                    row += "<td>-</td><td>-</td>"
+                
+                # Median by method (aggregated across selected versions)
+                method_scores = defaultdict(list)
+                for version in version_names:
+                    if version in tag_gs_scores and tag in tag_gs_scores[version]:
+                        for method in methods:
+                            score = tag_gs_scores[version][tag].get(method)
+                            if score is not None:
+                                method_scores[method].append(score)
+                
                 for method in methods:
-                    method_count = tag_counts[version]['_tagged_sessions'].get(method, 0)
-                    total_by_method[method] += method_count
-        
-        for method in methods:
-            count = total_by_method[method]
-            percentage = (count / total_tagged_sessions * 100) if total_tagged_sessions > 0 else 0
-            total_row += f"<td><strong>{count}</strong></td><td><strong>{percentage:.1f}%</strong></td>"
-        
-        total_row += "</tr>"
-        rows += total_row
-        
-        return rows
+                    scores = method_scores[method]
+                    if scores:
+                        median_score = statistics.median(scores)
+                        row += f"<td>{median_score:.1f}</td><td>-</td>"
+                    else:
+                        row += "<td>-</td><td>-</td>"
+                
+                row += "</tr>"
+                rows += row
+            
+            # Add Total row (not applicable for GS scores, but keep for consistency)
+            total_row = "<tr><td><strong>Total</strong></td>"
+            total_row += "<td><strong>-</strong></td><td><strong>-</strong></td>"
+            
+            for method in methods:
+                total_row += "<td><strong>-</strong></td><td><strong>-</strong></td>"
+            
+            total_row += "</tr>"
+            rows += total_row
+            
+            return rows
     
     def calculate_tag_combination_counts(self, sessions: List[Dict], messages_data: Dict, selected_tags: List[str]) -> Dict:
         """Calculate session counts for tag combinations by version and method"""
@@ -2855,7 +3259,7 @@ class SimpleVersionComparisonDashboard:
         
         return rows
     
-    def generate_dashboard_html(self, metrics: List[Dict], progression_data: Dict = None, rating_stats: Dict = None, progression_data_filtered: Dict = None, volume_data: Dict = None, volume_data_refrigerator: Dict = None, session_participant_map: Dict = None, volume_session_maps: Dict = None, progression_session_data: List[Dict] = None, progression_session_data_filtered: List[Dict] = None, all_sessions: List[Dict] = None, all_messages_data: Dict = None, flw_breakdown: Dict = None, avg_gs_scores: Dict = None, tag_counts: Dict = None, tag_combination_data: Dict = None, today_yesterday_tendency: Dict = None, avg_rating_today: Dict = None, avg_rating_yesterday: Dict = None) -> str:
+    def generate_dashboard_html(self, metrics: List[Dict], progression_data: Dict = None, rating_stats: Dict = None, progression_data_filtered: Dict = None, volume_data: Dict = None, volume_data_refrigerator: Dict = None, session_participant_map: Dict = None, volume_session_maps: Dict = None, progression_session_data: List[Dict] = None, progression_session_data_filtered: List[Dict] = None, all_sessions: List[Dict] = None, all_messages_data: Dict = None, flw_breakdown: Dict = None, avg_gs_scores: Dict = None, tag_counts: Dict = None, tag_combination_data: Dict = None, today_yesterday_tendency: Dict = None, avg_rating_today: Dict = None, avg_rating_yesterday: Dict = None, tag_gs_scores: Dict = None, tag_combination_gs_data: Dict = None, rating_distribution: Dict = None) -> str:
         """Generate complete dashboard HTML"""
         # Generate summary table
         table_rows = ""
@@ -3075,11 +3479,16 @@ class SimpleVersionComparisonDashboard:
         progression_session_data_json = json.dumps(progression_session_data) if progression_session_data else "[]"
         progression_session_data_filtered_json = json.dumps(progression_session_data_filtered) if progression_session_data_filtered else "[]"
         
-        # Convert tag_counts to JSON for JavaScript
+        # Convert tag_counts and tag_gs_scores to JSON for JavaScript
         tag_counts_json = json.dumps(tag_counts) if tag_counts else "{}"
+        tag_gs_scores_json = json.dumps(tag_gs_scores) if tag_gs_scores else "{}"
         
         # Convert tag_combination_data to JSON for JavaScript
         tag_combination_data_json = json.dumps(tag_combination_data) if tag_combination_data else "{}"
+        tag_combination_gs_data_json = json.dumps(tag_combination_gs_data) if tag_combination_gs_data else "{}"
+        
+        # Convert rating_distribution to JSON for JavaScript
+        rating_distribution_json = json.dumps(rating_distribution) if rating_distribution else "{}"
         
         html_content = f"""
 <!DOCTYPE html>
@@ -3322,6 +3731,45 @@ class SimpleVersionComparisonDashboard:
                     </div>
                     <!-- Performance Tab -->
                     <div class="tab-pane fade" id="performance" role="tabpanel" aria-labelledby="performance-tab">
+                        <!-- FLW Rating Distribution Chart -->
+                        <div class="row mt-4">
+                            <div class="col-12">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h3>FLW Rating Distribution</h3>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="mb-3">
+                                            <div class="row">
+                                                <div class="col-md-6">
+                                                    <label for="ratingChartMethodFilter" class="form-label">Filter by Coaching Method:</label>
+                                                    <select class="form-select" id="ratingChartMethodFilter" onchange="updateRatingDistributionChart()">
+                                                        <option value="all">All Methods</option>
+                                                        <option value="Scenario">Scenario</option>
+                                                        <option value="Microlearning">Microlearning</option>
+                                                        <option value="Microlearning vaccines">Microlearning vaccines</option>
+                                                        <option value="Motivational interviewing">Motivational interviewing</option>
+                                                        <option value="Visit check in">Visit check in</option>
+                                                        <option value="Unknown">Unknown</option>
+                                                    </select>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <label for="ratingChartVersionFilter" class="form-label">Filter by Bot Version:</label>
+                                                    <select class="form-select" id="ratingChartVersionFilter" onchange="updateRatingDistributionChart()">
+                                                        <option value="all">All Versions</option>
+                                                        {''.join([f'<option value="{metric["version_name"]}">{metric["version_name"]}</option>' for metric in metrics])}
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="chart-container" style="position: relative; height: 400px;">
+                                            <canvas id="ratingDistributionChart"></canvas>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
                         <div class="row mt-4">
                             <div class="col-12">
                                 <div class="card">
@@ -3506,6 +3954,17 @@ class SimpleVersionComparisonDashboard:
                                         <h3>Median User Words per Session by Method and Version</h3>
                                     </div>
                                     <div class="card-body">
+                                        <div class="mb-3">
+                                            <label class="form-label">Display Mode:</label>
+                                            <div class="btn-group" role="group" aria-label="Words display mode">
+                                                <input type="radio" class="btn-check" name="wordsDisplayMode" id="wordsModePerSession" value="per_session" checked onchange="updateMedianWordsTable()">
+                                                <label class="btn btn-outline-primary" for="wordsModePerSession">Per Session</label>
+                                                
+                                                <input type="radio" class="btn-check" name="wordsDisplayMode" id="wordsModePerMessage" value="per_message" onchange="updateMedianWordsTable()">
+                                                <label class="btn btn-outline-primary" for="wordsModePerMessage">Per Message</label>
+                                            </div>
+                                            <small class="form-text text-muted d-block mt-2">Per Session: Median words per session. Per Message: Median words per session divided by median messages per session.</small>
+                                        </div>
                                         <div class="table-responsive">
                                             <table class="table table-striped table-hover" id="medianWordsTable">
                                                 <thead class="table-dark">
@@ -3694,6 +4153,19 @@ class SimpleVersionComparisonDashboard:
                                     </div>
                                     <div class="card-body">
                                         <div class="mb-3">
+                                            <div class="row mb-3">
+                                                <div class="col-12">
+                                                    <label class="form-label">Display Mode:</label>
+                                                    <div class="btn-group" role="group" aria-label="Tag display mode">
+                                                        <input type="radio" class="btn-check" name="tagDisplayMode" id="tagModeCount" value="count" checked onchange="updateTagTable()">
+                                                        <label class="btn btn-outline-primary" for="tagModeCount">Count</label>
+                                                        
+                                                        <input type="radio" class="btn-check" name="tagDisplayMode" id="tagModeGS" value="gs_score" onchange="updateTagTable()">
+                                                        <label class="btn btn-outline-primary" for="tagModeGS">GS Score</label>
+                                                    </div>
+                                                    <small class="form-text text-muted d-block mt-2">Count: Number of sessions with tags. GS Score: Median GS score for participants in tagged sessions.</small>
+                                                </div>
+                                            </div>
                                             <div class="row">
                                                 <div class="col-md-6">
                                                     <label for="versionFilterTags" class="form-label">Filter by Bot Version (multi-select):</label>
@@ -3728,7 +4200,7 @@ class SimpleVersionComparisonDashboard:
                                         </div>
                                         <div class="table-responsive">
                                             <table class="table table-striped table-hover" id="tagTable">
-                                                <thead class="table-dark">
+                                                <thead class="table-dark" id="tagTableHeader">
                                                     <tr>
                                                         <th rowspan="2">Tag</th>
                                                         <th colspan="2">Total Sessions</th>
@@ -3777,6 +4249,19 @@ class SimpleVersionComparisonDashboard:
                                     </div>
                                     <div class="card-body">
                                         <div class="mb-3">
+                                            <div class="row mb-3">
+                                                <div class="col-12">
+                                                    <label class="form-label">Display Mode:</label>
+                                                    <div class="btn-group" role="group" aria-label="Tag combination display mode">
+                                                        <input type="radio" class="btn-check" name="tagCombinationDisplayMode" id="tagCombinationModeCount" value="count" checked onchange="updateTagCombinationTable()">
+                                                        <label class="btn btn-outline-primary" for="tagCombinationModeCount">Count</label>
+                                                        
+                                                        <input type="radio" class="btn-check" name="tagCombinationDisplayMode" id="tagCombinationModeGS" value="gs_score" onchange="updateTagCombinationTable()">
+                                                        <label class="btn btn-outline-primary" for="tagCombinationModeGS">GS Score</label>
+                                                    </div>
+                                                    <small class="form-text text-muted d-block mt-2">Count: Number of sessions with tag combinations. GS Score: Median GS score for participants in sessions with tag combinations.</small>
+                                                </div>
+                                            </div>
                                             <label for="tagCombinationFilter" class="form-label">Select Tag(s) to Filter (multi-select):</label>
                                             <select class="form-select" id="tagCombinationFilter" multiple size="6" onchange="updateTagCombinationTable()">
                                                 <option value="safe">safe</option>
@@ -3800,7 +4285,7 @@ class SimpleVersionComparisonDashboard:
                                         </div>
                                         <div class="table-responsive">
                                             <table class="table table-striped table-hover" id="tagCombinationTable">
-                                                <thead class="table-dark">
+                                                <thead class="table-dark" id="tagCombinationTableHeader">
                                                     <tr>
                                                         <th>Method</th>
                                                         {''.join([f'<th colspan="2">{metric["version_name"]}</th>' for metric in metrics])}
@@ -3936,121 +4421,343 @@ class SimpleVersionComparisonDashboard:
         // Tag counts data from server
         const tagCountsData = {tag_counts_json};
         
+        // Tag GS scores data from server
+        const tagGScoresData = {tag_gs_scores_json};
+        
         // Tag combination data from server
         const tagCombinationData = {tag_combination_data_json};
+        
+        // Tag combination GS data from server
+        const tagCombinationGSData = {tag_combination_gs_data_json};
+        
+        // Rating distribution data from server
+        const ratingDistributionData = {rating_distribution_json};
+        
+        // Function to update tag table header based on mode
+        function updateTagTableHeader(mode) {{
+            const header = document.getElementById('tagTableHeader');
+            if (!header) return;
+            
+            if (mode === 'gs_score') {{
+                header.innerHTML = `
+                    <tr>
+                        <th rowspan="2">Tag</th>
+                        <th colspan="2">Total</th>
+                        <th colspan="2">Scenario</th>
+                        <th colspan="2">Microlearning</th>
+                        <th colspan="2">Microlearning vaccines</th>
+                        <th colspan="2">Motivational interviewing</th>
+                        <th colspan="2">Visit check in</th>
+                        <th colspan="2">Unknown</th>
+                    </tr>
+                    <tr>
+                        <th>Median GS</th>
+                        <th>-</th>
+                        <th>Median GS</th>
+                        <th>-</th>
+                        <th>Median GS</th>
+                        <th>-</th>
+                        <th>Median GS</th>
+                        <th>-</th>
+                        <th>Median GS</th>
+                        <th>-</th>
+                        <th>Median GS</th>
+                        <th>-</th>
+                        <th>Median GS</th>
+                        <th>-</th>
+                    </tr>
+                `;
+            }} else {{
+                header.innerHTML = `
+                    <tr>
+                        <th rowspan="2">Tag</th>
+                        <th colspan="2">Total Sessions</th>
+                        <th colspan="2">Scenario</th>
+                        <th colspan="2">Microlearning</th>
+                        <th colspan="2">Microlearning vaccines</th>
+                        <th colspan="2">Motivational interviewing</th>
+                        <th colspan="2">Visit check in</th>
+                        <th colspan="2">Unknown</th>
+                    </tr>
+                    <tr>
+                        <th>Count</th>
+                        <th>%</th>
+                        <th>Count</th>
+                        <th>%</th>
+                        <th>Count</th>
+                        <th>%</th>
+                        <th>Count</th>
+                        <th>%</th>
+                        <th>Count</th>
+                        <th>%</th>
+                        <th>Count</th>
+                        <th>%</th>
+                        <th>Count</th>
+                        <th>%</th>
+                    </tr>
+                `;
+            }}
+        }}
         
         // Function to update tag table based on selected versions and tags
         function updateTagTable() {{
             const versionSelect = document.getElementById('versionFilterTags');
             const tagSelect = document.getElementById('tagFilterTags');
             const tableBody = document.getElementById('tagTableBody');
-            if (!versionSelect || !tagSelect || !tableBody || !tagCountsData) return;
+            const modeRadios = document.querySelectorAll('input[name="tagDisplayMode"]');
+            if (!versionSelect || !tagSelect || !tableBody || !modeRadios.length) return;
             
-            // Get selected versions
-            const selectedVersions = Array.from(versionSelect.selectedOptions).map(opt => opt.value);
-            const versionsToShow = selectedVersions.length > 0 ? selectedVersions : Object.keys(tagCountsData).filter(v => v !== 'All Versions');
+            // Get selected mode
+            const selectedMode = Array.from(modeRadios).find(r => r.checked)?.value || 'count';
             
-            // Get selected tags
-            const selectedTags = Array.from(tagSelect.selectedOptions).map(opt => opt.value);
-            const tagsToTrack = [
-                'safe', 'unsafe', 'acceptable', 'unacceptable',
-                'refrigerator_example', 'not_refrigerator_example',
-                'bot_performance_good', 'bot_performance_bad',
-                'coaching_good', 'coaching_undetermined', 'coaching_bad',
-                'engagement_good', 'engagement_bad',
-                'user_knowledge_good', 'user_knowledge_bad',
-                'user_ai_response'
-            ];
-            const tagsToShow = selectedTags.length > 0 ? selectedTags : tagsToTrack;
+            // Update header
+            updateTagTableHeader(selectedMode);
             
-            const methods = ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown'];
-            
-            // Calculate total tagged sessions per method across selected versions
-            const totalTaggedByMethod = {{}};
-            methods.forEach(method => totalTaggedByMethod[method] = 0);
-            let totalTaggedSessions = 0;
-            
-            versionsToShow.forEach(version => {{
-                if (tagCountsData[version] && tagCountsData[version]['_tagged_sessions']) {{
-                    totalTaggedSessions += tagCountsData[version]['_tagged_sessions'].total || 0;
-                    methods.forEach(method => {{
-                        totalTaggedByMethod[method] += tagCountsData[version]['_tagged_sessions'][method] || 0;
-                    }});
+            if (selectedMode === 'gs_score') {{
+                if (!tagGScoresData || Object.keys(tagGScoresData).length === 0) {{
+                    tableBody.innerHTML = '<tr><td colspan="15" class="text-center">No GS score data available</td></tr>';
+                    return;
                 }}
-            }});
-            
-            let html = '';
-            
-            // Generate rows for each selected tag
-            tagsToShow.forEach(tag => {{
-                html += `<tr><td><strong>${{tag}}</strong></td>`;
                 
-                // Total count across selected versions
-                let totalCount = 0;
+                // Get selected versions
+                const selectedVersions = Array.from(versionSelect.selectedOptions).map(opt => opt.value);
+                const versionsToShow = selectedVersions.length > 0 ? selectedVersions : Object.keys(tagGScoresData).filter(v => v !== 'All Versions');
+                
+                // Get selected tags
+                const selectedTags = Array.from(tagSelect.selectedOptions).map(opt => opt.value);
+                const tagsToTrack = [
+                    'safe', 'unsafe', 'acceptable', 'unacceptable',
+                    'refrigerator_example', 'not_refrigerator_example',
+                    'bot_performance_good', 'bot_performance_bad',
+                    'coaching_good', 'coaching_undetermined', 'coaching_bad',
+                    'engagement_good', 'engagement_bad',
+                    'user_knowledge_good', 'user_knowledge_bad',
+                    'user_ai_response'
+                ];
+                const tagsToShow = selectedTags.length > 0 ? selectedTags : tagsToTrack;
+                
+                const methods = ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown'];
+                
+                let html = '';
+                
+                // Generate rows for each selected tag
+                tagsToShow.forEach(tag => {{
+                    html += `<tr><td><strong>${{tag}}</strong></td>`;
+                    
+                    // Collect all GS scores for this tag across selected versions
+                    const allScores = [];
+                    versionsToShow.forEach(version => {{
+                        if (tagGScoresData[version] && tagGScoresData[version][tag]) {{
+                            const score = tagGScoresData[version][tag].total;
+                            if (score !== undefined && score !== null) {{
+                                allScores.push(score);
+                            }}
+                        }}
+                    }});
+                    
+                    // Calculate total median
+                    const totalMedian = allScores.length > 0 ? allScores.reduce((a, b) => a + b, 0) / allScores.length : null;
+                    if (totalMedian !== null) {{
+                        // Calculate median properly
+                        const sorted = allScores.slice().sort((a, b) => a - b);
+                        const mid = Math.floor(sorted.length / 2);
+                        const median = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+                        html += `<td>${{median.toFixed(1)}}</td><td>-</td>`;
+                    }} else {{
+                        html += '<td>-</td><td>-</td>';
+                    }}
+                    
+                    // Median by method (aggregated across selected versions)
+                    const methodScores = {{}};
+                    methods.forEach(method => methodScores[method] = []);
+                    
+                    versionsToShow.forEach(version => {{
+                        if (tagGScoresData[version] && tagGScoresData[version][tag]) {{
+                            methods.forEach(method => {{
+                                const score = tagGScoresData[version][tag][method];
+                                if (score !== undefined && score !== null) {{
+                                    methodScores[method].push(score);
+                                }}
+                            }});
+                        }}
+                    }});
+                    
+                    methods.forEach(method => {{
+                        const scores = methodScores[method];
+                        if (scores.length > 0) {{
+                            const sorted = scores.slice().sort((a, b) => a - b);
+                            const mid = Math.floor(sorted.length / 2);
+                            const median = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+                            html += `<td>${{median.toFixed(1)}}</td><td>-</td>`;
+                        }} else {{
+                            html += '<td>-</td><td>-</td>';
+                        }}
+                    }});
+                    
+                    html += '</tr>';
+                }});
+                
+                // Add Total row (not applicable for GS scores, but keep for consistency)
+                html += '<tr><td><strong>Total</strong></td>';
+                html += '<td><strong>-</strong></td><td><strong>-</strong></td>';
+                methods.forEach(() => {{
+                    html += '<td><strong>-</strong></td><td><strong>-</strong></td>';
+                }});
+                html += '</tr>';
+                
+                tableBody.innerHTML = html;
+            }} else {{
+                // Count mode (original logic)
+                if (!tagCountsData) {{
+                    tableBody.innerHTML = '<tr><td colspan="15" class="text-center">No tag data available</td></tr>';
+                    return;
+                }}
+                
+                // Get selected versions
+                const selectedVersions = Array.from(versionSelect.selectedOptions).map(opt => opt.value);
+                const versionsToShow = selectedVersions.length > 0 ? selectedVersions : Object.keys(tagCountsData).filter(v => v !== 'All Versions');
+                
+                // Get selected tags
+                const selectedTags = Array.from(tagSelect.selectedOptions).map(opt => opt.value);
+                const tagsToTrack = [
+                    'safe', 'unsafe', 'acceptable', 'unacceptable',
+                    'refrigerator_example', 'not_refrigerator_example',
+                    'bot_performance_good', 'bot_performance_bad',
+                    'coaching_good', 'coaching_undetermined', 'coaching_bad',
+                    'engagement_good', 'engagement_bad',
+                    'user_knowledge_good', 'user_knowledge_bad',
+                    'user_ai_response'
+                ];
+                const tagsToShow = selectedTags.length > 0 ? selectedTags : tagsToTrack;
+                
+                const methods = ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown'];
+                
+                // Calculate total tagged sessions per method across selected versions
+                const totalTaggedByMethod = {{}};
+                methods.forEach(method => totalTaggedByMethod[method] = 0);
+                let totalTaggedSessions = 0;
+                
                 versionsToShow.forEach(version => {{
-                    if (tagCountsData[version] && tagCountsData[version][tag]) {{
-                        totalCount += tagCountsData[version][tag].total || 0;
+                    if (tagCountsData[version] && tagCountsData[version]['_tagged_sessions']) {{
+                        totalTaggedSessions += tagCountsData[version]['_tagged_sessions'].total || 0;
+                        methods.forEach(method => {{
+                            totalTaggedByMethod[method] += tagCountsData[version]['_tagged_sessions'][method] || 0;
+                        }});
                     }}
                 }});
                 
-                // Total percentage
-                const totalPercentage = totalTaggedSessions > 0 ? (totalCount / totalTaggedSessions * 100) : 0;
-                html += `<td>${{totalCount}}</td><td>${{totalPercentage.toFixed(1)}}%</td>`;
+                let html = '';
                 
-                // Count by method (aggregated across selected versions)
-                const methodTotals = {{}};
-                methods.forEach(method => methodTotals[method] = 0);
+                // Generate rows for each selected tag
+                tagsToShow.forEach(tag => {{
+                    html += `<tr><td><strong>${{tag}}</strong></td>`;
+                    
+                    // Total count across selected versions
+                    let totalCount = 0;
+                    versionsToShow.forEach(version => {{
+                        if (tagCountsData[version] && tagCountsData[version][tag]) {{
+                            totalCount += tagCountsData[version][tag].total || 0;
+                        }}
+                    }});
+                    
+                    // Total percentage
+                    const totalPercentage = totalTaggedSessions > 0 ? (totalCount / totalTaggedSessions * 100) : 0;
+                    html += `<td>${{totalCount}}</td><td>${{totalPercentage.toFixed(1)}}%</td>`;
+                    
+                    // Count by method (aggregated across selected versions)
+                    const methodTotals = {{}};
+                    methods.forEach(method => methodTotals[method] = 0);
+                    
+                    versionsToShow.forEach(version => {{
+                        if (tagCountsData[version] && tagCountsData[version][tag]) {{
+                            methods.forEach(method => {{
+                                methodTotals[method] += tagCountsData[version][tag][method] || 0;
+                            }});
+                        }}
+                    }});
+                    
+                    methods.forEach(method => {{
+                        const count = methodTotals[method];
+                        // Percentage: count for this method / total count for this tag
+                        const percentage = totalCount > 0 ? (count / totalCount * 100) : 0;
+                        html += `<td>${{count}}</td><td>${{percentage.toFixed(1)}}%</td>`;
+                    }});
+                    
+                    html += '</tr>';
+                }});
+                
+                // Add Total row
+                html += '<tr><td><strong>Total</strong></td>';
+                html += `<td><strong>${{totalTaggedSessions}}</strong></td><td><strong>100.0%</strong></td>`;
+                
+                // Total by method - sum across selected versions
+                const totalByMethod = {{}};
+                methods.forEach(method => totalByMethod[method] = 0);
                 
                 versionsToShow.forEach(version => {{
-                    if (tagCountsData[version] && tagCountsData[version][tag]) {{
+                    if (tagCountsData[version] && tagCountsData[version]['_tagged_sessions']) {{
                         methods.forEach(method => {{
-                            methodTotals[method] += tagCountsData[version][tag][method] || 0;
+                            totalByMethod[method] += tagCountsData[version]['_tagged_sessions'][method] || 0;
                         }});
                     }}
                 }});
                 
                 methods.forEach(method => {{
-                    const count = methodTotals[method];
-                    // Percentage: count for this method / total count for this tag
-                    const percentage = totalCount > 0 ? (count / totalCount * 100) : 0;
-                    html += `<td>${{count}}</td><td>${{percentage.toFixed(1)}}%</td>`;
+                    const count = totalByMethod[method];
+                    const percentage = totalTaggedSessions > 0 ? (count / totalTaggedSessions * 100) : 0;
+                    html += `<td><strong>${{count}}</strong></td><td><strong>${{percentage.toFixed(1)}}%</strong></td>`;
                 }});
                 
                 html += '</tr>';
-            }});
+                
+                tableBody.innerHTML = html;
+            }}
+        }}
+        
+        // Function to update tag combination table header based on mode
+        function updateTagCombinationTableHeader(mode) {{
+            const header = document.getElementById('tagCombinationTableHeader');
+            if (!header) return;
             
-            // Add Total row
-            html += '<tr><td><strong>Total</strong></td>';
-            html += `<td><strong>${{totalTaggedSessions}}</strong></td><td><strong>100.0%</strong></td>`;
+            const versionNames = {json.dumps([m['version_name'] for m in metrics])};
             
-            // Total by method - sum across selected versions
-            const totalByMethod = {{}};
-            methods.forEach(method => totalByMethod[method] = 0);
-            
-            versionsToShow.forEach(version => {{
-                if (tagCountsData[version] && tagCountsData[version]['_tagged_sessions']) {{
-                    methods.forEach(method => {{
-                        totalByMethod[method] += tagCountsData[version]['_tagged_sessions'][method] || 0;
-                    }});
-                }}
-            }});
-            
-            methods.forEach(method => {{
-                const count = totalByMethod[method];
-                const percentage = totalTaggedSessions > 0 ? (count / totalTaggedSessions * 100) : 0;
-                html += `<td><strong>${{count}}</strong></td><td><strong>${{percentage.toFixed(1)}}%</strong></td>`;
-            }});
-            
-            html += '</tr>';
-            
-            tableBody.innerHTML = html;
+            if (mode === 'gs_score') {{
+                header.innerHTML = `
+                    <tr>
+                        <th>Method</th>
+                        ${{versionNames.map(v => `<th colspan="2">${{v}}</th>`).join('')}}
+                    </tr>
+                    <tr>
+                        <th></th>
+                        ${{versionNames.map(() => '<th>Median GS</th><th>-</th>').join('')}}
+                    </tr>
+                `;
+            }} else {{
+                header.innerHTML = `
+                    <tr>
+                        <th>Method</th>
+                        ${{versionNames.map(v => `<th colspan="2">${{v}}</th>`).join('')}}
+                    </tr>
+                    <tr>
+                        <th></th>
+                        ${{versionNames.map(() => '<th>Count</th><th>%</th>').join('')}}
+                    </tr>
+                `;
+            }}
         }}
         
         // Function to update tag combination table
         function updateTagCombinationTable() {{
             const select = document.getElementById('tagCombinationFilter');
             const tableBody = document.getElementById('tagCombinationTableBody');
-            if (!select || !tableBody || !tagCombinationData) return;
+            const modeRadios = document.querySelectorAll('input[name="tagCombinationDisplayMode"]');
+            if (!select || !tableBody || !modeRadios.length) return;
+            
+            // Get selected mode
+            const selectedMode = Array.from(modeRadios).find(r => r.checked)?.value || 'count';
+            
+            // Update header
+            updateTagCombinationTableHeader(selectedMode);
             
             // Get selected tags
             const selectedTags = Array.from(select.selectedOptions).map(opt => opt.value);
@@ -4064,47 +4771,107 @@ class SimpleVersionComparisonDashboard:
             const methods = ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown'];
             const versionNames = {json.dumps([m['version_name'] for m in metrics])};
             
-            // Calculate counts for each version/method combination
-            const counts = {{}};
-            const totalTagged = {{}};
-            
-            versionNames.forEach(version => {{
-                counts[version] = {{}};
-                totalTagged[version] = {{}};
-                methods.forEach(method => {{
-                    counts[version][method] = 0;
-                    totalTagged[version][method] = 0;
-                    
-                    if (tagCombinationData[version] && tagCombinationData[version][method]) {{
-                        const sessionsData = tagCombinationData[version][method].sessions || {{}};
-                        totalTagged[version][method] = tagCombinationData[version][method].total_tagged || 0;
-                        
-                        // Count sessions that have ALL selected tags
-                        Object.keys(sessionsData).forEach(sessionId => {{
-                            const sessionTags = sessionsData[sessionId] || [];
-                            const hasAllTags = selectedTags.every(tag => sessionTags.includes(tag));
-                            if (hasAllTags) {{
-                                counts[version][method]++;
-                            }}
-                        }});
-                    }}
-                }});
-            }});
-            
-            // Generate table rows
-            let html = '';
-            methods.forEach(method => {{
-                html += `<tr><td><strong>${{method}}</strong></td>`;
+            if (selectedMode === 'gs_score') {{
+                if (!tagCombinationGSData || Object.keys(tagCombinationGSData).length === 0) {{
+                    const numCols = {len(metrics) * 2 + 1};
+                    tableBody.innerHTML = '<tr><td colspan="' + numCols + '" class="text-center">No GS score data available</td></tr>';
+                    return;
+                }}
+                
+                // Calculate GS scores for each version/method combination
+                const gsScores = {{}};
+                
                 versionNames.forEach(version => {{
-                    const count = counts[version][method] || 0;
-                    const total = totalTagged[version][method] || 0;
-                    const percentage = total > 0 ? (count / total * 100) : 0;
-                    html += `<td>${{count}}</td><td>${{percentage.toFixed(1)}}%</td>`;
+                    gsScores[version] = {{}};
+                    methods.forEach(method => {{
+                        gsScores[version][method] = [];
+                        
+                        if (tagCombinationGSData[version] && tagCombinationGSData[version][method]) {{
+                            const sessionsData = tagCombinationGSData[version][method].sessions || {{}};
+                            const gsScoresData = tagCombinationGSData[version][method].gs_scores || {{}};
+                            
+                            // Collect GS scores for sessions that have ALL selected tags
+                            Object.keys(sessionsData).forEach(sessionId => {{
+                                const sessionTags = sessionsData[sessionId] || [];
+                                const hasAllTags = selectedTags.every(tag => sessionTags.includes(tag));
+                                if (hasAllTags && gsScoresData[sessionId] !== undefined && gsScoresData[sessionId] !== null) {{
+                                    gsScores[version][method].push(gsScoresData[sessionId]);
+                                }}
+                            }});
+                        }}
+                    }});
                 }});
-                html += '</tr>';
-            }});
-            
-            tableBody.innerHTML = html;
+                
+                // Generate table rows
+                let html = '';
+                methods.forEach(method => {{
+                    html += `<tr><td><strong>${{method}}</strong></td>`;
+                    versionNames.forEach(version => {{
+                        const scores = gsScores[version][method] || [];
+                        if (scores.length > 0) {{
+                            // Calculate median
+                            const sorted = scores.slice().sort((a, b) => a - b);
+                            const mid = Math.floor(sorted.length / 2);
+                            const median = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+                            html += `<td>${{median.toFixed(1)}}</td><td>-</td>`;
+                        }} else {{
+                            html += '<td>-</td><td>-</td>';
+                        }}
+                    }});
+                    html += '</tr>';
+                }});
+                
+                tableBody.innerHTML = html;
+            }} else {{
+                // Count mode (original logic)
+                if (!tagCombinationData) {{
+                    const numCols = {len(metrics) * 2 + 1};
+                    tableBody.innerHTML = '<tr><td colspan="' + numCols + '" class="text-center">No tag data available</td></tr>';
+                    return;
+                }}
+                
+                // Calculate counts for each version/method combination
+                const counts = {{}};
+                const totalTagged = {{}};
+                
+                versionNames.forEach(version => {{
+                    counts[version] = {{}};
+                    totalTagged[version] = {{}};
+                    methods.forEach(method => {{
+                        counts[version][method] = 0;
+                        totalTagged[version][method] = 0;
+                        
+                        if (tagCombinationData[version] && tagCombinationData[version][method]) {{
+                            const sessionsData = tagCombinationData[version][method].sessions || {{}};
+                            totalTagged[version][method] = tagCombinationData[version][method].total_tagged || 0;
+                            
+                            // Count sessions that have ALL selected tags
+                            Object.keys(sessionsData).forEach(sessionId => {{
+                                const sessionTags = sessionsData[sessionId] || [];
+                                const hasAllTags = selectedTags.every(tag => sessionTags.includes(tag));
+                                if (hasAllTags) {{
+                                    counts[version][method]++;
+                                }}
+                            }});
+                        }}
+                    }});
+                }});
+                
+                // Generate table rows
+                let html = '';
+                methods.forEach(method => {{
+                    html += `<tr><td><strong>${{method}}</strong></td>`;
+                    versionNames.forEach(version => {{
+                        const count = counts[version][method] || 0;
+                        const total = totalTagged[version][method] || 0;
+                        const percentage = total > 0 ? (count / total * 100) : 0;
+                        html += `<td>${{count}}</td><td>${{percentage.toFixed(1)}}%</td>`;
+                    }});
+                    html += '</tr>';
+                }});
+                
+                tableBody.innerHTML = html;
+            }}
         }}
         
         // Table rows for refrigerator filter toggle (as JSON strings for safe embedding)
@@ -4119,6 +4886,121 @@ class SimpleVersionComparisonDashboard:
         
         let progressionChart = null;
         let volumeChart = null;
+        let ratingDistributionChart = null;
+        
+        // Function to update rating distribution chart
+        function updateRatingDistributionChart() {{
+            const methodSelect = document.getElementById('ratingChartMethodFilter');
+            const versionSelect = document.getElementById('ratingChartVersionFilter');
+            const canvas = document.getElementById('ratingDistributionChart');
+            
+            if (!methodSelect || !versionSelect || !canvas || !ratingDistributionData) return;
+            
+            const selectedMethod = methodSelect.value;
+            const selectedVersion = versionSelect.value;
+            
+            // Get data based on filters
+            let percentages = {{}};
+            let total = 0;
+            
+            if (selectedMethod === 'all' && selectedVersion === 'all') {{
+                // All sessions
+                percentages = ratingDistributionData.all?.percentages || {{}};
+                total = ratingDistributionData.all?.total || 0;
+            }} else if (selectedMethod !== 'all' && selectedVersion === 'all') {{
+                // Filter by method only
+                const methodData = ratingDistributionData.by_method?.percentages?.[selectedMethod] || {{}};
+                const methodCounts = ratingDistributionData.by_method?.counts?.[selectedMethod] || {{}};
+                percentages = methodData;
+                total = Object.values(methodCounts).reduce((sum, count) => sum + count, 0);
+            }} else if (selectedMethod === 'all' && selectedVersion !== 'all') {{
+                // Filter by version only
+                const versionData = ratingDistributionData.by_version?.percentages?.[selectedVersion] || {{}};
+                const versionCounts = ratingDistributionData.by_version?.counts?.[selectedVersion] || {{}};
+                percentages = versionData;
+                total = Object.values(versionCounts).reduce((sum, count) => sum + count, 0);
+            }} else {{
+                // Filter by both method and version
+                const methodVersionData = ratingDistributionData.by_method_version?.percentages?.[selectedMethod]?.[selectedVersion] || {{}};
+                const methodVersionCounts = ratingDistributionData.by_method_version?.counts?.[selectedMethod]?.[selectedVersion] || {{}};
+                percentages = methodVersionData;
+                total = Object.values(methodVersionCounts).reduce((sum, count) => sum + count, 0);
+            }}
+            
+            // Prepare data for chart (ratings 1-5)
+            const labels = ['1', '2', '3', '4', '5'];
+            const data = labels.map(rating => percentages[parseInt(rating)] || 0);
+            
+            // Destroy existing chart if it exists
+            if (ratingDistributionChart) {{
+                ratingDistributionChart.destroy();
+            }}
+            
+            // Create new chart
+            const ctx = canvas.getContext('2d');
+            ratingDistributionChart = new Chart(ctx, {{
+                type: 'bar',
+                data: {{
+                    labels: labels,
+                    datasets: [{{
+                        label: 'Percentage of Sessions',
+                        data: data,
+                        backgroundColor: 'rgba(54, 162, 235, 0.6)',
+                        borderColor: 'rgba(54, 162, 235, 1)',
+                        borderWidth: 1
+                    }}]
+                }},
+                options: {{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {{
+                        legend: {{
+                            display: false
+                        }},
+                        tooltip: {{
+                            callbacks: {{
+                                label: function(context) {{
+                                    const rating = context.label;
+                                    const percentage = context.parsed.y;
+                                    const count = Math.round((percentage / 100) * total);
+                                    return `Rating ${{rating}}: ${{percentage.toFixed(1)}}% (${{count}} sessions)`;
+                                }}
+                            }}
+                        }},
+                        title: {{
+                            display: true,
+                            text: `Total Sessions: ${{total}}`
+                        }}
+                    }},
+                    scales: {{
+                        y: {{
+                            beginAtZero: true,
+                            max: 100,
+                            ticks: {{
+                                callback: function(value) {{
+                                    return value + '%';
+                                }}
+                            }},
+                            title: {{
+                                display: true,
+                                text: 'Percentage of Sessions (%)'
+                            }}
+                        }},
+                        x: {{
+                            title: {{
+                                display: true,
+                                text: 'Rating'
+                            }}
+                        }}
+                    }}
+                }}
+            }});
+        }}
+        
+        // Initialize rating distribution chart on page load
+        if (document.getElementById('ratingDistributionChart')) {{
+            updateRatingDistributionChart();
+        }}
         
         function filterProgressionDataByParticipant(progressionDataView, progressionSessionData, participantIds) {{
             if (!participantIds || participantIds.length === 0) {{
@@ -4954,6 +5836,11 @@ class SimpleVersionComparisonDashboard:
             const table = document.getElementById('medianWordsTable');
             if (!table || !data) return;
             
+            // Get display mode
+            const modeRadios = document.querySelectorAll('input[name="wordsDisplayMode"]');
+            const selectedMode = modeRadios.length > 0 ? Array.from(modeRadios).find(r => r.checked)?.value || 'per_session' : 'per_session';
+            const isPerMessage = selectedMode === 'per_message';
+            
             const tbody = table.querySelector('tbody');
             if (!tbody) return;
             
@@ -4979,25 +5866,55 @@ class SimpleVersionComparisonDashboard:
                 data.forEach((metric, idx) => {{
                     const cell = document.createElement('td');
                     const version_name = metric.version_name || '';
-                    const tableData = excludeOutliers ? metric.median_words_by_method_filtered : metric.median_words_by_method;
-                    const method_data = tableData[method];
+                    const wordsTableData = excludeOutliers ? metric.median_words_by_method_filtered : metric.median_words_by_method;
+                    const messagesTableData = excludeOutliers ? metric.median_messages_by_method_filtered : metric.median_messages_by_method;
+                    const words_method_data = wordsTableData[method];
+                    const messages_method_data = messagesTableData[method];
                     
-                    let value = 0.0;
-                    if (method_data === undefined || method_data === null) {{
-                        value = 0.0;
-                    }} else if (typeof method_data === 'number') {{
-                        // Direct number value (already filtered by version)
-                        value = method_data;
-                    }} else if (typeof method_data === 'object') {{
-                        // Object with version keys
+                    let wordsValue = 0.0;
+                    let messagesValue = 0.0;
+                    
+                    // Get words value
+                    if (words_method_data === undefined || words_method_data === null) {{
+                        wordsValue = 0.0;
+                    }} else if (typeof words_method_data === 'number') {{
+                        wordsValue = words_method_data;
+                    }} else if (typeof words_method_data === 'object') {{
                         if (version_name === 'Control bot') {{
                             if (method === 'Unknown') {{
-                                value = method_data.Control || 0.0;
+                                wordsValue = words_method_data.Control || 0.0;
                             }}
                         }} else {{
                             const version_key = version_name.replace('Coaching bot ', '');
-                            value = method_data[version_key] || 0.0;
+                            wordsValue = words_method_data[version_key] || 0.0;
                         }}
+                    }}
+                    
+                    // Get messages value
+                    if (messages_method_data === undefined || messages_method_data === null) {{
+                        messagesValue = 0.0;
+                    }} else if (typeof messages_method_data === 'number') {{
+                        messagesValue = messages_method_data;
+                    }} else if (typeof messages_method_data === 'object') {{
+                        if (version_name === 'Control bot') {{
+                            if (method === 'Unknown') {{
+                                messagesValue = messages_method_data.Control || 0.0;
+                            }}
+                        }} else {{
+                            const version_key = version_name.replace('Coaching bot ', '');
+                            messagesValue = messages_method_data[version_key] || 0.0;
+                        }}
+                    }}
+                    
+                    // Calculate final value
+                    let value = 0.0;
+                    if (isPerMessage) {{
+                        // Divide words by messages
+                        if (messagesValue > 0 && wordsValue > 0) {{
+                            value = wordsValue / messagesValue;
+                        }}
+                    }} else {{
+                        value = wordsValue;
                     }}
                     
                     if (value > 0) {{
@@ -5628,9 +6545,21 @@ class SimpleVersionComparisonDashboard:
         print("Calculating tag counts by version and method...")
         tag_counts = self.calculate_tag_counts_by_version_and_method(sessions, messages_data)
         
+        # Calculate tag GS scores
+        tag_gs_scores = None
+        if gs_data:
+            print("Calculating tag GS scores by version and method...")
+            tag_gs_scores = self.calculate_tag_gs_scores_by_version_and_method(sessions, messages_data, gs_data)
+        
         # Prepare tag combination data
         print("Preparing tag combination data...")
         tag_combination_data = self.prepare_tag_combination_data(sessions, messages_data)
+        
+        # Prepare tag combination GS data
+        tag_combination_gs_data = None
+        if gs_data:
+            print("Preparing tag combination GS data...")
+            tag_combination_gs_data = self.prepare_tag_combination_gs_data(sessions, messages_data, gs_data)
         
         # Calculate today/yesterday preference tendency
         print("Calculating today/yesterday preference tendency...")
@@ -5652,8 +6581,12 @@ class SimpleVersionComparisonDashboard:
         avg_rating_today = self.calculate_average_rating_by_preference(sessions, messages_data, 'today')
         avg_rating_yesterday = self.calculate_average_rating_by_preference(sessions, messages_data, 'yesterday')
         
+        # Calculate rating distribution
+        print("Calculating rating distribution...")
+        rating_distribution = self.calculate_rating_distribution(sessions, messages_data)
+        
         # Generate HTML
-        html_content = self.generate_dashboard_html(metrics, progression_data, rating_stats, progression_data_filtered, volume_data, volume_data_refrigerator, session_participant_map, volume_session_maps, progression_session_data, progression_session_data_filtered, sessions, messages_data, flw_breakdown, avg_gs_scores, tag_counts, tag_combination_data, today_yesterday_tendency, avg_rating_today, avg_rating_yesterday)
+        html_content = self.generate_dashboard_html(metrics, progression_data, rating_stats, progression_data_filtered, volume_data, volume_data_refrigerator, session_participant_map, volume_session_maps, progression_session_data, progression_session_data_filtered, sessions, messages_data, flw_breakdown, avg_gs_scores, tag_counts, tag_combination_data, today_yesterday_tendency, avg_rating_today, avg_rating_yesterday, tag_gs_scores, tag_combination_gs_data, rating_distribution)
         
         # Save to file
         output_file = self.output_dir / "version_comparison_dashboard.html"
