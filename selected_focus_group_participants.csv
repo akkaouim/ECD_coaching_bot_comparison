@@ -1,0 +1,7 @@
+Participant ID,Methods Used,Total Visits,Avg Visit Duration (min),Post Test Tries,Performance Type,Performance Details,AI Tool Used,Loop Blocked,Interaction Type,Good ECD Knowledge
+41ca09f534bb72d42230,"Microlearning, Microlearning vaccines, Motivational interviewing, Scenario, Visit check in",28,1530.9,2.0,Bad Performer,Long duration: 1530.9min (median: 1007.1min),Yes,Yes,"AI tool, Loop blocking",Yes
+e7ebafd1ba2c8b3e1e6e,"Microlearning, Microlearning vaccines, Motivational interviewing, Scenario, Visit check in",13,5870.8,3.0,Bad Performer,Low visits: 13 (median: 27.5); Long duration: 5870.8min (median: 1007.1min),Yes,Yes,"AI tool, Loop blocking",Yes
+a6607ee2a0b98a148f3a,"Microlearning, Microlearning vaccines, Motivational interviewing, Scenario, Visit check in",29,428.3,1.0,Good Performer,Short duration: 428.3min (median: 1007.1min),No,No,Normal,Yes
+a98a9d69640df97e8343,"Microlearning, Microlearning vaccines, Motivational interviewing, Scenario, Visit check in",13,715.9,7.0,Bad Performer,Low visits: 13 (median: 27.5),No,No,Normal,No
+0008d8064749e2465008,"Microlearning, Microlearning vaccines, Motivational interviewing, Scenario, Visit check in",30,865.6,1.0,Normal,Visits: 30 (median: 27.5); Duration: 865.6min (median: 1007.1min),No,No,Normal,Yes
+0cb4346a043632be69b3,"Microlearning, Microlearning vaccines, Motivational interviewing, Scenario, Visit check in",26,579.3,3.0,Normal,Visits: 26 (median: 27.5); Duration: 579.3min (median: 1007.1min),No,No,Normal,Yes

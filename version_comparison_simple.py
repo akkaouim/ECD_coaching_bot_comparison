@@ -128,72 +128,262 @@ class SimpleVersionComparisonDashboard:
         return filtered_messages
     
     def load_gs_visit_list(self) -> Dict[str, Dict]:
-        """Load GS visit list CSV and return dict mapping participant ID to GS visit data"""
-        gs_file = Path("../data/GS scores list.csv")
-        if not gs_file.exists():
-            print(f"Warning: {gs_file} not found")
-            return {}
-        
+        """Load and merge GS visit data from both GS scores list.csv and ECD OCS Connect Data.csv
+        ECD OCS Connect Data takes priority when there are conflicts (as it's a direct system export)
+        """
         gs_data = {}
-        print(f"Loading GS visit list from {gs_file}")
         
+        # Step 1: Load data from GS scores list.csv (baseline)
+        gs_file = Path("../data/GS scores list.csv")
+        if gs_file.exists():
+            print(f"Loading GS visit list from {gs_file}")
+            try:
+                with open(gs_file, 'r', encoding='utf-8-sig') as f:  # utf-8-sig handles BOM
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        participant_id = row.get('Participant ID', '').strip()
+                        if not participant_id:
+                            continue
+                        
+                        gs_date_str = row.get('GS visit Date', '').strip()
+                        gs_score_str = row.get('Score', '').strip()
+                        # Handle BOM in Group column name
+                        group = row.get('Group', row.get('\ufeffGroup', '')).strip()
+                        cohort = row.get('Cohort', '').strip()
+                        
+                        gs_date = None
+                        if gs_date_str:
+                            # Try multiple date formats
+                            date_formats = [
+                                '%m/%d/%y',      # 6/26/25
+                                '%m/%d/%Y',      # 6/26/2025
+                                '%d-%m-%Y',      # 13-5-2025
+                                '%d-%m-%y',      # 13-5-25
+                                '%d/%m/%Y',      # 13/5/2025
+                                '%d/%m/%y',      # 13/5/25
+                                '%Y-%m-%d',      # 2025-06-26
+                            ]
+                            
+                            for date_format in date_formats:
+                                try:
+                                    gs_date = datetime.strptime(gs_date_str, date_format)
+                                    break
+                                except ValueError:
+                                    continue
+                            
+                            if gs_date is None:
+                                print(f"Warning: Could not parse GS date '{gs_date_str}' for participant {participant_id}")
+                        
+                        gs_score = None
+                        if gs_score_str:
+                            try:
+                                gs_score = int(gs_score_str)
+                            except ValueError:
+                                pass
+                        
+                        gs_data[participant_id] = {
+                            'date': gs_date,
+                            'date_str': gs_date_str,  # Keep original string format
+                            'score': gs_score,
+                            'group': group,
+                            'cohort': cohort,
+                            'source': 'gs_scores_list'  # Track data source
+                        }
+                
+                print(f"Loaded GS visit data from GS scores list for {len(gs_data)} participants")
+            except Exception as e:
+                print(f"Error loading GS visit list: {e}")
+        else:
+            print(f"Warning: {gs_file} not found")
+        
+        # Step 2: Load and merge data from ECD OCS Connect Data.csv (takes priority)
+        ecd_file = Path("../data/ECD OCS Connect Data.csv")
+        if ecd_file.exists():
+            print(f"Loading and merging GS data from {ecd_file}")
+            ecd_updates = 0
+            ecd_new = 0
+            try:
+                with open(ecd_file, 'r', encoding='utf-8-sig') as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        participant_id = row.get('connect_id', '').strip()
+                        if not participant_id:
+                            continue
+                        
+                        # Get GS score from ECD (gs_total_score_percent)
+                        gs_score_str = row.get('gs_total_score_percent', '').strip()
+                        gs_score = None
+                        if gs_score_str:
+                            try:
+                                # ECD has percentage, convert to integer score
+                                gs_score_float = float(gs_score_str)
+                                gs_score = int(round(gs_score_float))
+                            except (ValueError, TypeError):
+                                pass
+                        
+                        # Get GS date from ECD (gs1_date)
+                        gs_date_str = row.get('gs1_date', '').strip()
+                        gs_date = None
+                        if gs_date_str:
+                            # ECD dates are typically in YYYY-MM-DD format
+                            date_formats = [
+                                '%Y-%m-%d',      # 2025-10-07
+                                '%m/%d/%y',      # 6/26/25
+                                '%m/%d/%Y',      # 6/26/2025
+                                '%d-%m-%Y',      # 13-5-2025
+                                '%d-%m-%y',      # 13-5-25
+                                '%d/%m/%Y',      # 13/5/2025
+                                '%d/%m/%y',      # 13/5/25
+                            ]
+                            
+                            for date_format in date_formats:
+                                try:
+                                    gs_date = datetime.strptime(gs_date_str, date_format)
+                                    break
+                                except ValueError:
+                                    continue
+                        
+                        # Get group from coach_vs_control (coach -> B, control -> A)
+                        coach_vs_control = row.get('coach_vs_control', '').strip().lower()
+                        group = None
+                        if coach_vs_control == 'coach':
+                            group = 'B'
+                        elif coach_vs_control == 'control':
+                            group = 'A'
+                        
+                        # Check if this participant already exists
+                        if participant_id in gs_data:
+                            # Update existing entry (ECD takes priority)
+                            existing = gs_data[participant_id]
+                            
+                            # Update score if ECD has it (even if GS scores list had it)
+                            if gs_score is not None:
+                                if existing['score'] != gs_score:
+                                    print(f"  Updating score for {participant_id}: {existing['score']} -> {gs_score} (ECD priority)")
+                                existing['score'] = gs_score
+                            
+                            # Update date if ECD has it
+                            if gs_date is not None:
+                                existing['date'] = gs_date
+                                existing['date_str'] = gs_date_str
+                            
+                            # Update group if ECD has it
+                            if group:
+                                existing['group'] = group
+                            
+                            existing['source'] = 'merged'  # Mark as merged
+                            ecd_updates += 1
+                        else:
+                            # New participant from ECD
+                            gs_data[participant_id] = {
+                                'date': gs_date,
+                                'date_str': gs_date_str,
+                                'score': gs_score,
+                                'group': group,
+                                'cohort': '',  # ECD doesn't have cohort
+                                'source': 'ecd_ocs_connect'
+                            }
+                            ecd_new += 1
+                
+                print(f"  Updated {ecd_updates} existing participants from ECD OCS Connect Data")
+                print(f"  Added {ecd_new} new participants from ECD OCS Connect Data")
+            except Exception as e:
+                print(f"Error loading ECD OCS Connect Data: {e}")
+        else:
+            print(f"Warning: {ecd_file} not found")
+        
+        print(f"Total GS visit data loaded: {len(gs_data)} participants")
+        return gs_data
+    
+    def load_flw_activity_data(self) -> Dict[str, Dict]:
+        """Load FLW activity data from ECD OCS Connect Data.csv
+        Returns a dictionary mapping participant_id to activity metrics
+        """
+        flw_data = {}
+        ecd_file = Path("../data/ECD OCS Connect Data.csv")
+        
+        if not ecd_file.exists():
+            print(f"Warning: {ecd_file} not found. FLW activity data will not be available.")
+            return flw_data
+        
+        print(f"Loading FLW activity data from {ecd_file}")
         try:
-            with open(gs_file, 'r', encoding='utf-8-sig') as f:  # utf-8-sig handles BOM
+            with open(ecd_file, 'r', encoding='utf-8-sig') as f:
                 reader = csv.DictReader(f)
+                loaded_count = 0
                 for row in reader:
-                    participant_id = row.get('Participant ID', '').strip()
+                    participant_id = row.get('connect_id', '').strip()
                     if not participant_id:
                         continue
                     
-                    gs_date_str = row.get('GS visit Date', '').strip()
-                    gs_score_str = row.get('Score', '').strip()
-                    # Handle BOM in Group column name
-                    group = row.get('Group', row.get('\ufeffGroup', '')).strip()
-                    cohort = row.get('Cohort', '').strip()
+                    # Load all FLW activity metrics
+                    activity_metrics = {}
                     
-                    gs_date = None
-                    if gs_date_str:
-                        # Try multiple date formats
-                        date_formats = [
-                            '%m/%d/%y',      # 6/26/25
-                            '%m/%d/%Y',      # 6/26/2025
-                            '%d-%m-%Y',      # 13-5-2025
-                            '%d-%m-%y',      # 13-5-25
-                            '%d/%m/%Y',      # 13/5/2025
-                            '%d/%m/%y',      # 13/5/25
-                            '%Y-%m-%d',      # 2025-06-26
-                        ]
-                        
-                        for date_format in date_formats:
-                            try:
-                                gs_date = datetime.strptime(gs_date_str, date_format)
-                                break
-                            except ValueError:
-                                continue
-                        
-                        if gs_date is None:
-                            print(f"Warning: Could not parse GS date '{gs_date_str}' for participant {participant_id}")
-                    
-                    gs_score = None
-                    if gs_score_str:
+                    # approved_visits_percentage
+                    approved_visits_str = row.get('approved_visits_percentage', '').strip()
+                    if approved_visits_str:
                         try:
-                            gs_score = int(gs_score_str)
-                        except ValueError:
+                            activity_metrics['approved_visits_percentage'] = float(approved_visits_str)
+                        except (ValueError, TypeError):
                             pass
                     
-                    gs_data[participant_id] = {
-                        'date': gs_date,
-                        'date_str': gs_date_str,  # Keep original string format
-                        'score': gs_score,
-                        'group': group,
-                        'cohort': cohort
-                    }
-            
-            print(f"Loaded GS visit data for {len(gs_data)} participants")
+                    # ecd_completed_intervention_percentage
+                    completed_intervention_str = row.get('ecd_completed_intervention_percentage', '').strip()
+                    if completed_intervention_str:
+                        try:
+                            activity_metrics['ecd_completed_intervention_percentage'] = float(completed_intervention_str)
+                        except (ValueError, TypeError):
+                            pass
+                    
+                    # visits_before_gs1
+                    visits_before_gs1_str = row.get('visits_before_gs1', '').strip()
+                    if visits_before_gs1_str:
+                        try:
+                            activity_metrics['visits_before_gs1'] = float(visits_before_gs1_str)
+                        except (ValueError, TypeError):
+                            pass
+                    
+                    # time_spent_learn (in hours, will convert to days later)
+                    time_spent_learn_str = row.get('time_spent_learn', '').strip()
+                    if time_spent_learn_str:
+                        try:
+                            activity_metrics['time_spent_learn'] = float(time_spent_learn_str)
+                        except (ValueError, TypeError):
+                            pass
+                    
+                    # post_test_tries
+                    post_test_tries_str = row.get('post_test_tries', '').strip()
+                    if post_test_tries_str:
+                        try:
+                            activity_metrics['post_test_tries'] = float(post_test_tries_str)
+                        except (ValueError, TypeError):
+                            pass
+                    
+                    # avg_distance_km_between_visits
+                    avg_distance_str = row.get('avg_distance_km_between_visits', '').strip()
+                    if avg_distance_str:
+                        try:
+                            activity_metrics['avg_distance_km_between_visits'] = float(avg_distance_str)
+                        except (ValueError, TypeError):
+                            pass
+                    
+                    # avg_minutes_between_visits
+                    avg_minutes_str = row.get('avg_minutes_between_visits', '').strip()
+                    if avg_minutes_str:
+                        try:
+                            activity_metrics['avg_minutes_between_visits'] = float(avg_minutes_str)
+                        except (ValueError, TypeError):
+                            pass
+                    
+                    if activity_metrics:
+                        flw_data[participant_id] = activity_metrics
+                        loaded_count += 1
+                
+                print(f"Loaded FLW activity data for {loaded_count} participants")
         except Exception as e:
-            print(f"Error loading GS visit list: {e}")
+            print(f"Error loading FLW activity data: {e}")
         
-        return gs_data
+        return flw_data
     
     def matches_version(self, session: Dict, version_config: Dict, messages: List[Dict] = None) -> bool:
         """Check if session matches version criteria based on last message version tag"""
@@ -862,6 +1052,117 @@ class SimpleVersionComparisonDashboard:
                     average_ratings[method][version] = 0.0
         
         return average_ratings
+    
+    def calculate_flw_activity_metrics(self, sessions: List[Dict], messages_data: Dict, flw_activity_data: Dict[str, Dict], metric_type: str) -> Dict[str, Dict[str, float]]:
+        """Calculate FLW activity metrics by method and version
+        
+        Args:
+            sessions: List of session dictionaries
+            messages_data: Dictionary mapping session_id to list of messages
+            flw_activity_data: Dictionary mapping participant_id to activity metrics
+            metric_type: One of 'approved_visits_percentage', 'ecd_completed_intervention_percentage', 
+                        'visits_before_gs1', 'time_spent_learn', 'post_test_tries'
+        
+        Returns:
+            Dictionary with structure: {method: {version: value}}
+            - For approved_visits_percentage and ecd_completed_intervention_percentage: median
+            - For visits_before_gs1, time_spent_learn, post_test_tries: average
+        """
+        method_version_values = {}
+        
+        # Initialize structure
+        for method in ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown']:
+            method_version_values[method] = {}
+            for version in ['V3', 'V4', 'V5', 'V6', 'Control']:
+                method_version_values[method][version] = []
+        
+        # Track participants we've already processed (to avoid double counting)
+        participant_processed = {}
+        
+        # Collect values for each method-version combination
+        for session in sessions:
+            session_id = session.get('id')
+            session_messages = messages_data.get(session_id, [])
+            
+            # Skip split sessions and test sessions
+            if self.should_exclude_session(session, session_messages):
+                continue
+            
+            # Get participant ID
+            participant_id = session.get('participant', {}).get('identifier', '').strip()
+            if not participant_id:
+                continue
+            
+            # Get activity data for this participant
+            activity_metrics = flw_activity_data.get(participant_id)
+            if not activity_metrics:
+                continue
+            
+            # Get the specific metric value
+            metric_value = activity_metrics.get(metric_type)
+            if metric_value is None:
+                continue
+            
+            # Determine version and method
+            version = None
+            detected_method = None
+            
+            # Check if this is a Control bot session first
+            control_config = self.coaching_bot_versions.get('Control bot', {})
+            if self.matches_version(session, control_config, session_messages):
+                detected_method = 'Unknown'
+                version = 'Control'
+            else:
+                # For coaching bots, detect method and version normally
+                detected_method = self.detect_coaching_method(session, session_messages)
+                
+                # Determine version
+                for version_name, version_config in self.coaching_bot_versions.items():
+                    if version_name != 'Control bot' and self.matches_version(session, version_config, session_messages):
+                        if 'V3' in version_name:
+                            version = 'V3'
+                        elif 'V4' in version_name:
+                            version = 'V4'
+                        elif 'V5' in version_name:
+                            version = 'V5'
+                        elif 'V6' in version_name:
+                            version = 'V6'
+                        break
+            
+            if version and detected_method:
+                # Use participant_id + version + method as key to avoid double counting same participant
+                participant_key = f"{participant_id}_{version}_{detected_method}"
+                if participant_key not in participant_processed:
+                    method_version_values[detected_method][version].append(metric_value)
+                    participant_processed[participant_key] = True
+        
+        # Calculate medians or averages
+        method_version_results = {}
+        for method in method_version_values:
+            method_version_results[method] = {}
+            for version in method_version_values[method]:
+                values = method_version_values[method][version]
+                if not values:
+                    method_version_results[method][version] = None
+                else:
+                    if metric_type in ['approved_visits_percentage', 'ecd_completed_intervention_percentage']:
+                        # Use median for percentages
+                        sorted_values = sorted(values)
+                        n = len(sorted_values)
+                        if n % 2 == 0:
+                            median = (sorted_values[n//2 - 1] + sorted_values[n//2]) / 2
+                        else:
+                            median = sorted_values[n//2]
+                        method_version_results[method][version] = median
+                    else:
+                        # Use average for counts and time
+                        avg = sum(values) / len(values)
+                        if metric_type == 'time_spent_learn':
+                            # Convert hours to days
+                            avg = avg / 24.0
+                        method_version_results[method][version] = avg
+        
+        return method_version_results
     
     def calculate_rating_distribution(self, sessions: List[Dict], messages_data: Dict) -> Dict:
         """Calculate rating distribution (counts and percentages for ratings 1-5) by method and version
@@ -2370,17 +2671,21 @@ class SimpleVersionComparisonDashboard:
                 else:
                     continue  # Skip unknown groups
             
-            # Determine GS score tier
-            if 0 <= score <= 50:
-                tier = '0-50'
-            elif 50 < score <= 80:
-                tier = '50-80'
-            elif score > 80:
-                tier = '>80'
+            # Determine GS score bracket
+            if 0 <= score <= 19:
+                bracket = '0-19'
+            elif 20 <= score <= 39:
+                bracket = '20-39'
+            elif 40 <= score <= 59:
+                bracket = '40-59'
+            elif 60 <= score <= 79:
+                bracket = '60-79'
+            elif 80 <= score <= 100:
+                bracket = '80-100'
             else:
                 continue  # Skip invalid scores
             
-            breakdown[cohort][group][tier] += 1
+            breakdown[cohort][group][bracket] += 1
         
         return dict(breakdown)
     
@@ -3137,57 +3442,99 @@ class SimpleVersionComparisonDashboard:
         return dict(result)
     
     def generate_flw_breakdown_table_rows(self, flw_breakdown: Dict) -> str:
-        """Generate HTML rows for FLW breakdown table"""
+        """Generate HTML rows for FLW breakdown table with collapsible cohort rows"""
         if not flw_breakdown:
             return "<tr><td colspan='8' class='text-center'>No GS data available</td></tr>"
         
         rows = ""
-        tiers = ['0-50', '50-80', '>80']
+        brackets = ['0-19', '20-39', '40-59', '60-79', '80-100']
         groups = ['Control', 'Coached']
         
         # Get all cohorts and sort them
         cohorts = sorted(flw_breakdown.keys())
         
         # Calculate totals
-        total_by_group_tier = defaultdict(lambda: defaultdict(int))
+        total_by_group_bracket = defaultdict(lambda: defaultdict(int))
         total_by_cohort = defaultdict(int)
+        total_by_group = defaultdict(int)
         grand_total = 0
+        
+        # Store cohort data for JavaScript
+        cohort_data = {}
         
         for cohort, group_data in flw_breakdown.items():
             cohort_total = 0
+            cohort_data[cohort] = {}
             for group in groups:
-                for tier in tiers:
-                    count = group_data.get(group, {}).get(tier, 0)
-                    total_by_group_tier[group][tier] += count
+                group_total = 0
+                cohort_data[cohort][group] = {}
+                for bracket in brackets:
+                    count = group_data.get(group, {}).get(bracket, 0)
+                    total_by_group_bracket[group][bracket] += count
+                    group_total += count
                     cohort_total += count
+                    cohort_data[cohort][group][bracket] = count
+                cohort_data[cohort][group]['total'] = group_total
+                total_by_group[group] += group_total
             total_by_cohort[cohort] = cohort_total
             grand_total += cohort_total
         
-        # Generate rows for each cohort
+        # Generate rows for each cohort with collapsible structure
         for cohort in cohorts:
             group_data = flw_breakdown[cohort]
-            cohort_total = total_by_cohort[cohort]
+            control_total = cohort_data[cohort]['Control']['total']
+            coached_total = cohort_data[cohort]['Coached']['total']
+            cohort_combined_total = control_total + coached_total
             
-            row = f"<tr><td><strong>{cohort}</strong></td>"
+            # Cohort header row (always visible, clickable to toggle) - shows combined totals for each bracket when collapsed
+            row = f'<tr class="cohort-header" data-cohort="{cohort}" style="cursor: pointer; background-color: #f8f9fa;" onclick="toggleCohort(\'{cohort}\')">'
+            row += f'<td><strong>{cohort}</strong> <i class="fas fa-chevron-right cohort-icon" id="icon-{cohort}"></i></td>'
+            row += '<td><strong>Total</strong></td>'
+            # Show combined totals (control + coach) for each bracket in collapsed view
+            for bracket in brackets:
+                control_count = group_data.get('Control', {}).get(bracket, 0)
+                coach_count = group_data.get('Coached', {}).get(bracket, 0)
+                bracket_total = control_count + coach_count
+                row += f'<td class="cohort-summary-bracket" data-cohort="{cohort}" data-bracket="{bracket}" data-count="{bracket_total}">{bracket_total}</td>'
+            row += f'<td class="cohort-total-cell"><strong>{cohort_combined_total}</strong></td></tr>'
+            rows += row
             
-            # Add counts for each group/tier combination
-            for group in groups:
-                for tier in tiers:
-                    count = group_data.get(group, {}).get(tier, 0)
-                    row += f"<td>{count}</td>"
+            # Expanded detail rows (hidden by default)
+            # Control detail row
+            row = f'<tr class="cohort-detail" data-cohort="{cohort}" style="display: none; color: #6c757d;">'
+            row += f'<td></td><td><strong>control</strong></td>'
+            for bracket in brackets:
+                count = group_data.get('Control', {}).get(bracket, 0)
+                row += f'<td data-count="{count}">{count}</td>'
+            row += f'<td><strong>{control_total}</strong></td></tr>'
+            rows += row
             
-            # Add cohort total
-            row += f"<td><strong>{cohort_total}</strong></td></tr>"
+            # Coached detail row
+            row = f'<tr class="cohort-detail" data-cohort="{cohort}" style="display: none; color: #6c757d;">'
+            row += '<td></td><td><strong>coach</strong></td>'
+            for bracket in brackets:
+                count = group_data.get('Coached', {}).get(bracket, 0)
+                row += f'<td data-count="{count}">{count}</td>'
+            row += f'<td><strong>{coached_total}</strong></td></tr>'
             rows += row
         
-        # Add totals row
+        # Add totals row (always visible) - emphasized with darker background
         if cohorts:
-            rows += "<tr><td><strong>Total</strong></td>"
-            for group in groups:
-                for tier in tiers:
-                    count = total_by_group_tier[group][tier]
-                    rows += f"<td><strong>{count}</strong></td>"
-            rows += f"<td><strong>{grand_total}</strong></td></tr>"
+            # Control total row
+            control_grand_total = total_by_group['Control']
+            rows += '<tr class="total-row" style="background-color: #e9ecef; font-weight: bold;"><td><strong>Total</strong></td><td><strong>control</strong></td>'
+            for bracket in brackets:
+                count = total_by_group_bracket['Control'].get(bracket, 0)
+                rows += f'<td data-count="{count}"><strong>{count}</strong></td>'
+            rows += f'<td><strong>{control_grand_total}</strong></td></tr>'
+            
+            # Coached total row
+            coached_grand_total = total_by_group['Coached']
+            rows += '<tr class="total-row" style="background-color: #e9ecef; font-weight: bold;"><td></td><td><strong>coach</strong></td>'
+            for bracket in brackets:
+                count = total_by_group_bracket['Coached'].get(bracket, 0)
+                rows += f'<td data-count="{count}"><strong>{count}</strong></td>'
+            rows += f'<td><strong>{coached_grand_total}</strong></td></tr>'
         
         return rows
     
@@ -3259,7 +3606,150 @@ class SimpleVersionComparisonDashboard:
         
         return rows
     
-    def generate_dashboard_html(self, metrics: List[Dict], progression_data: Dict = None, rating_stats: Dict = None, progression_data_filtered: Dict = None, volume_data: Dict = None, volume_data_refrigerator: Dict = None, session_participant_map: Dict = None, volume_session_maps: Dict = None, progression_session_data: List[Dict] = None, progression_session_data_filtered: List[Dict] = None, all_sessions: List[Dict] = None, all_messages_data: Dict = None, flw_breakdown: Dict = None, avg_gs_scores: Dict = None, tag_counts: Dict = None, tag_combination_data: Dict = None, today_yesterday_tendency: Dict = None, avg_rating_today: Dict = None, avg_rating_yesterday: Dict = None, tag_gs_scores: Dict = None, tag_combination_gs_data: Dict = None, rating_distribution: Dict = None) -> str:
+    def generate_flw_activity_table_rows(self, flw_activity_metrics: Dict, metrics: List[Dict], metric_type: str) -> str:
+        """Generate HTML rows for FLW activity table by method and version
+        
+        Args:
+            flw_activity_metrics: Dictionary with all metric types
+            metrics: List of version metrics
+            metric_type: One of 'approved_visits_percentage', 'ecd_completed_intervention_percentage', 
+                        'visits_before_gs1', 'time_spent_learn', 'post_test_tries'
+        """
+        if not flw_activity_metrics or metric_type not in flw_activity_metrics:
+            return "<tr><td colspan='6' class='text-center'>No FLW activity data available</td></tr>"
+        
+        metric_data = flw_activity_metrics[metric_type]
+        methods = ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown']
+        versions = ['V3', 'V4', 'V5', 'V6', 'Control']
+        
+        rows = ""
+        
+        # Generate rows for each method
+        for method in methods:
+            row = f"<tr><td><strong>{method}</strong></td>"
+            
+            # Add version columns
+            for version in versions:
+                value = metric_data.get(method, {}).get(version)
+                if value is not None:
+                    if metric_type in ['approved_visits_percentage', 'ecd_completed_intervention_percentage']:
+                        # Display as percentage with 1 decimal place
+                        row += f"<td>{value:.1f}%</td>"
+                    elif metric_type == 'time_spent_learn':
+                        # Display as days with 2 decimal places
+                        row += f"<td>{value:.2f}</td>"
+                    else:
+                        # Display as number with 2 decimal places
+                        row += f"<td>{value:.2f}</td>"
+                else:
+                    row += "<td>-</td>"
+            
+            row += "</tr>"
+            rows += row
+        
+        # Add "All Versions" column calculation
+        # Calculate weighted average or median of medians for each method
+        rows_with_all_versions = ""
+        for method in methods:
+            row = f"<tr><td><strong>{method}</strong></td>"
+            
+            # Version columns
+            for version in versions:
+                value = metric_data.get(method, {}).get(version)
+                if value is not None:
+                    if metric_type in ['approved_visits_percentage', 'ecd_completed_intervention_percentage']:
+                        row += f"<td>{value:.1f}%</td>"
+                    elif metric_type == 'time_spent_learn':
+                        row += f"<td>{value:.2f}</td>"
+                    else:
+                        row += f"<td>{value:.2f}</td>"
+                else:
+                    row += "<td>-</td>"
+            
+            # "All Versions" column - median of medians for percentages, average of averages for others
+            version_values = [metric_data.get(method, {}).get(v) for v in versions]
+            version_values = [v for v in version_values if v is not None]
+            
+            if version_values:
+                if metric_type in ['approved_visits_percentage', 'ecd_completed_intervention_percentage']:
+                    # Median of medians
+                    sorted_values = sorted(version_values)
+                    n = len(sorted_values)
+                    if n % 2 == 0:
+                        all_versions_value = (sorted_values[n//2 - 1] + sorted_values[n//2]) / 2
+                    else:
+                        all_versions_value = sorted_values[n//2]
+                    row += f"<td><strong>{all_versions_value:.1f}%</strong></td>"
+                else:
+                    # Average of averages
+                    all_versions_value = sum(version_values) / len(version_values)
+                    if metric_type == 'time_spent_learn':
+                        row += f"<td><strong>{all_versions_value:.2f}</strong></td>"
+                    else:
+                        row += f"<td><strong>{all_versions_value:.2f}</strong></td>"
+            else:
+                row += "<td>-</td>"
+            
+            row += "</tr>"
+            rows_with_all_versions += row
+        
+        # Add "Total (All Methods)" row
+        total_row = "<tr><td><strong>Total (All Methods)</strong></td>"
+        for version in versions:
+            version_values = [metric_data.get(method, {}).get(version) for method in methods]
+            version_values = [v for v in version_values if v is not None]
+            
+            if version_values:
+                if metric_type in ['approved_visits_percentage', 'ecd_completed_intervention_percentage']:
+                    # Median of medians
+                    sorted_values = sorted(version_values)
+                    n = len(sorted_values)
+                    if n % 2 == 0:
+                        total_value = (sorted_values[n//2 - 1] + sorted_values[n//2]) / 2
+                    else:
+                        total_value = sorted_values[n//2]
+                    total_row += f"<td><strong>{total_value:.1f}%</strong></td>"
+                else:
+                    # Average of averages
+                    total_value = sum(version_values) / len(version_values)
+                    if metric_type == 'time_spent_learn':
+                        total_row += f"<td><strong>{total_value:.2f}</strong></td>"
+                    else:
+                        total_row += f"<td><strong>{total_value:.2f}</strong></td>"
+            else:
+                total_row += "<td>-</td>"
+        
+        # "All Versions" column for total row
+        all_method_version_values = []
+        for method in methods:
+            for version in versions:
+                value = metric_data.get(method, {}).get(version)
+                if value is not None:
+                    all_method_version_values.append(value)
+        
+        if all_method_version_values:
+            if metric_type in ['approved_visits_percentage', 'ecd_completed_intervention_percentage']:
+                sorted_values = sorted(all_method_version_values)
+                n = len(sorted_values)
+                if n % 2 == 0:
+                    grand_total = (sorted_values[n//2 - 1] + sorted_values[n//2]) / 2
+                else:
+                    grand_total = sorted_values[n//2]
+                total_row += f"<td><strong>{grand_total:.1f}%</strong></td>"
+            else:
+                grand_total = sum(all_method_version_values) / len(all_method_version_values)
+                if metric_type == 'time_spent_learn':
+                    total_row += f"<td><strong>{grand_total:.2f}</strong></td>"
+                else:
+                    total_row += f"<td><strong>{grand_total:.2f}</strong></td>"
+        else:
+            total_row += "<td>-</td>"
+        
+        total_row += "</tr>"
+        
+        return rows_with_all_versions + total_row
+    
+    def generate_dashboard_html(self, metrics: List[Dict], progression_data: Dict = None, rating_stats: Dict = None, progression_data_filtered: Dict = None, volume_data: Dict = None, volume_data_refrigerator: Dict = None, session_participant_map: Dict = None, volume_session_maps: Dict = None, progression_session_data: List[Dict] = None, progression_session_data_filtered: List[Dict] = None, all_sessions: List[Dict] = None, all_messages_data: Dict = None, flw_breakdown: Dict = None, avg_gs_scores: Dict = None, tag_counts: Dict = None, tag_combination_data: Dict = None, today_yesterday_tendency: Dict = None, avg_rating_today: Dict = None, avg_rating_yesterday: Dict = None, tag_gs_scores: Dict = None, tag_combination_gs_data: Dict = None, rating_distribution: Dict = None, flw_activity_metrics: Dict = None) -> str:
         """Generate complete dashboard HTML"""
         # Generate summary table
         table_rows = ""
@@ -3490,6 +3980,23 @@ class SimpleVersionComparisonDashboard:
         # Convert rating_distribution to JSON for JavaScript
         rating_distribution_json = json.dumps(rating_distribution) if rating_distribution else "{}"
         
+        # Generate FLW activity table rows (default to approved_visits_percentage)
+        flw_activity_table_rows = ""
+        if flw_activity_metrics:
+            flw_activity_table_rows = self.generate_flw_activity_table_rows(flw_activity_metrics, metrics, 'approved_visits_percentage')
+        else:
+            flw_activity_table_rows = "<tr><td colspan='7' class='text-center'>No FLW activity data available</td></tr>"
+        
+        # Generate FLW visit spacing table rows (default to avg_distance_km_between_visits)
+        flw_visit_spacing_table_rows = ""
+        if flw_activity_metrics:
+            flw_visit_spacing_table_rows = self.generate_flw_activity_table_rows(flw_activity_metrics, metrics, 'avg_distance_km_between_visits')
+        else:
+            flw_visit_spacing_table_rows = "<tr><td colspan='7' class='text-center'>No FLW activity data available</td></tr>"
+        
+        # Convert FLW activity metrics to JSON for JavaScript
+        flw_activity_metrics_json = json.dumps(flw_activity_metrics) if flw_activity_metrics else "{}"
+        
         html_content = f"""
 <!DOCTYPE html>
 <html lang="en">
@@ -3522,6 +4029,26 @@ class SimpleVersionComparisonDashboard:
             background-color: #343a40 !important;
             color: #ffffff !important;
             font-weight: bold;
+        }}
+        /* Style for control/coach detail rows - lighter font color */
+        tr.cohort-detail {{
+            color: #6c757d;
+        }}
+        tr.cohort-detail td {{
+            color: #6c757d;
+        }}
+        /* Style for total rows - emphasized with background and bold */
+        tr.total-row {{
+            background-color: #e9ecef !important;
+            font-weight: bold;
+        }}
+        tr.total-row td {{
+            background-color: #e9ecef !important;
+            font-weight: bold;
+        }}
+        /* Style for cohort header rows */
+        tr.cohort-header {{
+            background-color: #f8f9fa;
         }}
         .navbar {{
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -3658,6 +4185,9 @@ class SimpleVersionComparisonDashboard:
                     </li>
                     <li class="nav-item" role="presentation">
                         <button class="nav-link" id="gold-standard-tab" data-bs-toggle="tab" data-bs-target="#gold-standard" type="button" role="tab" aria-controls="gold-standard" aria-selected="false">Gold Standard</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="flw-activity-tab" data-bs-toggle="tab" data-bs-target="#flw-activity" type="button" role="tab" aria-controls="flw-activity" aria-selected="false">FLW Activity</button>
                     </li>
                     <li class="nav-item" role="presentation">
                         <button class="nav-link" id="tags-tab" data-bs-toggle="tab" data-bs-target="#tags" type="button" role="tab" aria-controls="tags" aria-selected="false">Tags</button>
@@ -4077,36 +4607,41 @@ class SimpleVersionComparisonDashboard:
                             <div class="col-12">
                                 <div class="card">
                                     <div class="card-header">
-                                        <h3>FLW Count by Cohort, Group, and GS Score Tier</h3>
+                                        <h3>GS Score Brackets</h3>
                                     </div>
                                     <div class="card-body">
+                                        <div class="mb-3">
+                                            <label class="form-label">Display Mode:</label>
+                                            <div class="btn-group" role="group" aria-label="GS brackets display mode">
+                                                <input type="radio" class="btn-check" name="gsBracketsDisplayMode" id="gsBracketsModeCount" value="count" checked onchange="updateGSBracketsTable()">
+                                                <label class="btn btn-outline-primary" for="gsBracketsModeCount">Count</label>
+                                                
+                                                <input type="radio" class="btn-check" name="gsBracketsDisplayMode" id="gsBracketsModePercentage" value="percentage" onchange="updateGSBracketsTable()">
+                                                <label class="btn btn-outline-primary" for="gsBracketsModePercentage">Percentage</label>
+                                            </div>
+                                            <small class="form-text text-muted d-block mt-2">Count: Number of FLWs. Percentage: Percentage based on the Total column for each row.</small>
+                                        </div>
                                         <div class="table-responsive">
-                                            <table class="table table-striped table-hover">
+                                            <table class="table table-striped table-hover" id="gsBracketsTable">
                                                 <thead class="table-dark">
                                                     <tr>
                                                         <th>Cohort</th>
-                                                        <th colspan="3">Control</th>
-                                                        <th colspan="3">Coached</th>
+                                                        <th>coach_vs_control</th>
+                                                        <th>0-19%</th>
+                                                        <th>20-39%</th>
+                                                        <th>40-59%</th>
+                                                        <th>60-79%</th>
+                                                        <th>80-100%</th>
                                                         <th>Total</th>
                                                     </tr>
-                                                    <tr>
-                                                        <th></th>
-                                                        <th>0-50</th>
-                                                        <th>50-80</th>
-                                                        <th>&gt;80</th>
-                                                        <th>0-50</th>
-                                                        <th>50-80</th>
-                                                        <th>&gt;80</th>
-                                                        <th></th>
-                                                    </tr>
                                                 </thead>
-                                                <tbody>
+                                                <tbody id="gsBracketsTableBody">
                                                     {self.generate_flw_breakdown_table_rows(flw_breakdown) if flw_breakdown else '<tr><td colspan="8" class="text-center">No GS data available</td></tr>'}
                                                 </tbody>
                                             </table>
                                         </div>
                                         <p class="text-muted mt-3">
-                                            <small>Note: Group A = Control, Group B = Coached. GS score tiers: 0-50, 50-80, &gt;80.</small>
+                                            <small>Note: Group A = Control, Group B = Coached. GS score brackets: 0-19, 20-39, 40-59, 60-79, 80-100. Click on cohort rows to expand/collapse details.</small>
                                         </p>
                                     </div>
                                 </div>
@@ -4137,6 +4672,87 @@ class SimpleVersionComparisonDashboard:
                                         <p class="text-muted mt-3">
                                             <small>Note: Average GS scores are calculated for participants who have GS scores and have used the corresponding bot version and coaching method combination.</small>
                                         </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- FLW Activity Tab -->
+                    <div class="tab-pane fade" id="flw-activity" role="tabpanel" aria-labelledby="flw-activity-tab">
+                        <div class="row mt-4">
+                            <div class="col-12">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h3>FLW Activity Metrics by Method and Version</h3>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="mb-3">
+                                            <label for="flwActivityMetric" class="form-label">Select Metric:</label>
+                                            <select class="form-select" id="flwActivityMetric" onchange="updateFLWActivityTable()">
+                                                <option value="approved_visits_percentage" selected>Median Approval Rate (%)</option>
+                                                <option value="ecd_completed_intervention_percentage">Median Intervention Completion Rate (%)</option>
+                                                <option value="visits_before_gs1">Average Number of Visits Before GS Score</option>
+                                                <option value="time_spent_learn">Average Time in Learn Module (days)</option>
+                                                <option value="post_test_tries">Average Number of Post Test Tries</option>
+                                            </select>
+                                        </div>
+                                        <div class="table-responsive">
+                                            <table class="table table-striped table-hover" id="flwActivityTable">
+                                                <thead class="table-dark">
+                                                    <tr>
+                                                        <th>Coaching Method</th>
+                                                        <th>V3</th>
+                                                        <th>V4</th>
+                                                        <th>V5</th>
+                                                        <th>V6</th>
+                                                        <th>Control</th>
+                                                        <th>All Versions</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="flwActivityTableBody">
+                                                    {flw_activity_table_rows}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Second FLW Activity Table -->
+                        <div class="row mt-4">
+                            <div class="col-12">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h3>Visit Spacing Metrics by Method and Version</h3>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="mb-3">
+                                            <label for="flwVisitSpacingMetric" class="form-label">Select Metric:</label>
+                                            <select class="form-select" id="flwVisitSpacingMetric" onchange="updateFLWVisitSpacingTable()">
+                                                <option value="avg_distance_km_between_visits" selected>Average Distance Between Visits (km)</option>
+                                                <option value="avg_minutes_between_visits">Average Time Between Visits (minutes)</option>
+                                            </select>
+                                        </div>
+                                        <div class="table-responsive">
+                                            <table class="table table-striped table-hover" id="flwVisitSpacingTable">
+                                                <thead class="table-dark">
+                                                    <tr>
+                                                        <th>Coaching Method</th>
+                                                        <th>V3</th>
+                                                        <th>V4</th>
+                                                        <th>V5</th>
+                                                        <th>V6</th>
+                                                        <th>Control</th>
+                                                        <th>All Versions</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="flwVisitSpacingTableBody">
+                                                    {flw_visit_spacing_table_rows}
+                                                </tbody>
+                                            </table>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -4432,6 +5048,228 @@ class SimpleVersionComparisonDashboard:
         
         // Rating distribution data from server
         const ratingDistributionData = {rating_distribution_json};
+        
+        // FLW activity metrics data from server
+        const flwActivityMetricsData = {flw_activity_metrics_json};
+        
+        // Function to update FLW activity table based on selected metric
+        function updateFLWActivityTable() {{
+            const metricSelect = document.getElementById('flwActivityMetric');
+            const selectedMetric = metricSelect.value;
+            const tbody = document.getElementById('flwActivityTableBody');
+            
+            if (!flwActivityMetricsData || !flwActivityMetricsData[selectedMetric]) {{
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center">No data available for selected metric</td></tr>';
+                return;
+            }}
+            
+            const metricData = flwActivityMetricsData[selectedMetric];
+            const methods = ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown'];
+            const versions = ['V3', 'V4', 'V5', 'V6', 'Control'];
+            
+            let rows = '';
+            
+            // Generate rows for each method
+            for (const method of methods) {{
+                let row = `<tr><td><strong>${{method}}</strong></td>`;
+                const versionValues = [];
+                
+                // Add version columns
+                for (const version of versions) {{
+                    const value = metricData[method]?.[version];
+                    if (value !== null && value !== undefined) {{
+                        if (selectedMetric === 'approved_visits_percentage' || selectedMetric === 'ecd_completed_intervention_percentage') {{
+                            row += `<td>${{value.toFixed(1)}}%</td>`;
+                        }} else if (selectedMetric === 'time_spent_learn') {{
+                            row += `<td>${{value.toFixed(2)}}</td>`;
+                        }} else {{
+                            row += `<td>${{value.toFixed(2)}}</td>`;
+                        }}
+                        versionValues.push(value);
+                    }} else {{
+                        row += '<td>-</td>';
+                    }}
+                }}
+                
+                // "All Versions" column
+                if (versionValues.length > 0) {{
+                    let allVersionsValue;
+                    if (selectedMetric === 'approved_visits_percentage' || selectedMetric === 'ecd_completed_intervention_percentage') {{
+                        // Median of medians
+                        const sorted = versionValues.slice().sort((a, b) => a - b);
+                        const n = sorted.length;
+                        allVersionsValue = n % 2 === 0 
+                            ? (sorted[n/2 - 1] + sorted[n/2]) / 2 
+                            : sorted[Math.floor(n/2)];
+                        row += `<td><strong>${{allVersionsValue.toFixed(1)}}%</strong></td>`;
+                    }} else {{
+                        // Average of averages
+                        allVersionsValue = versionValues.reduce((a, b) => a + b, 0) / versionValues.length;
+                        if (selectedMetric === 'time_spent_learn') {{
+                            row += `<td><strong>${{allVersionsValue.toFixed(2)}}</strong></td>`;
+                        }} else {{
+                            row += `<td><strong>${{allVersionsValue.toFixed(2)}}</strong></td>`;
+                        }}
+                    }}
+                }} else {{
+                    row += '<td>-</td>';
+                }}
+                
+                row += '</tr>';
+                rows += row;
+            }}
+            
+            // Add "Total (All Methods)" row
+            let totalRow = '<tr><td><strong>Total (All Methods)</strong></td>';
+            for (const version of versions) {{
+                const versionValues = methods
+                    .map(method => metricData[method]?.[version])
+                    .filter(v => v !== null && v !== undefined);
+                
+                if (versionValues.length > 0) {{
+                    let totalValue;
+                    if (selectedMetric === 'approved_visits_percentage' || selectedMetric === 'ecd_completed_intervention_percentage') {{
+                        const sorted = versionValues.slice().sort((a, b) => a - b);
+                        const n = sorted.length;
+                        totalValue = n % 2 === 0 
+                            ? (sorted[n/2 - 1] + sorted[n/2]) / 2 
+                            : sorted[Math.floor(n/2)];
+                        totalRow += `<td><strong>${{totalValue.toFixed(1)}}%</strong></td>`;
+                    }} else {{
+                        totalValue = versionValues.reduce((a, b) => a + b, 0) / versionValues.length;
+                        if (selectedMetric === 'time_spent_learn') {{
+                            totalRow += `<td><strong>${{totalValue.toFixed(2)}}</strong></td>`;
+                        }} else {{
+                            totalRow += `<td><strong>${{totalValue.toFixed(2)}}</strong></td>`;
+                        }}
+                    }}
+                }} else {{
+                    totalRow += '<td>-</td>';
+                }}
+            }}
+            
+            // "All Versions" column for total row
+            const allMethodVersionValues = [];
+            for (const method of methods) {{
+                for (const version of versions) {{
+                    const value = metricData[method]?.[version];
+                    if (value !== null && value !== undefined) {{
+                        allMethodVersionValues.push(value);
+                    }}
+                }}
+            }}
+            
+            if (allMethodVersionValues.length > 0) {{
+                let grandTotal;
+                if (selectedMetric === 'approved_visits_percentage' || selectedMetric === 'ecd_completed_intervention_percentage') {{
+                    const sorted = allMethodVersionValues.slice().sort((a, b) => a - b);
+                    const n = sorted.length;
+                    grandTotal = n % 2 === 0 
+                        ? (sorted[n/2 - 1] + sorted[n/2]) / 2 
+                        : sorted[Math.floor(n/2)];
+                    totalRow += `<td><strong>${{grandTotal.toFixed(1)}}%</strong></td>`;
+                }} else {{
+                    grandTotal = allMethodVersionValues.reduce((a, b) => a + b, 0) / allMethodVersionValues.length;
+                    if (selectedMetric === 'time_spent_learn') {{
+                        totalRow += `<td><strong>${{grandTotal.toFixed(2)}}</strong></td>`;
+                    }} else {{
+                        totalRow += `<td><strong>${{grandTotal.toFixed(2)}}</strong></td>`;
+                    }}
+                }}
+            }} else {{
+                totalRow += '<td>-</td>';
+            }}
+            
+            totalRow += '</tr>';
+            rows += totalRow;
+            
+            tbody.innerHTML = rows;
+        }}
+        
+        // Function to update FLW visit spacing table based on selected metric
+        function updateFLWVisitSpacingTable() {{
+            const metricSelect = document.getElementById('flwVisitSpacingMetric');
+            const selectedMetric = metricSelect.value;
+            const tbody = document.getElementById('flwVisitSpacingTableBody');
+            
+            if (!flwActivityMetricsData || !flwActivityMetricsData[selectedMetric]) {{
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center">No data available for selected metric</td></tr>';
+                return;
+            }}
+            
+            const metricData = flwActivityMetricsData[selectedMetric];
+            const methods = ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown'];
+            const versions = ['V3', 'V4', 'V5', 'V6', 'Control'];
+            
+            let rows = '';
+            
+            // Generate rows for each method
+            for (const method of methods) {{
+                let row = `<tr><td><strong>${{method}}</strong></td>`;
+                const versionValues = [];
+                
+                // Add version columns
+                for (const version of versions) {{
+                    const value = metricData[method]?.[version];
+                    if (value !== null && value !== undefined) {{
+                        // Both metrics are averages, display with 2 decimal places
+                        row += `<td>${{value.toFixed(2)}}</td>`;
+                        versionValues.push(value);
+                    }} else {{
+                        row += '<td>-</td>';
+                    }}
+                }}
+                
+                // "All Versions" column - average of averages
+                if (versionValues.length > 0) {{
+                    const allVersionsValue = versionValues.reduce((a, b) => a + b, 0) / versionValues.length;
+                    row += `<td><strong>${{allVersionsValue.toFixed(2)}}</strong></td>`;
+                }} else {{
+                    row += '<td>-</td>';
+                }}
+                
+                row += '</tr>';
+                rows += row;
+            }}
+            
+            // Add "Total (All Methods)" row
+            let totalRow = '<tr><td><strong>Total (All Methods)</strong></td>';
+            for (const version of versions) {{
+                const versionValues = methods
+                    .map(method => metricData[method]?.[version])
+                    .filter(v => v !== null && v !== undefined);
+                
+                if (versionValues.length > 0) {{
+                    const totalValue = versionValues.reduce((a, b) => a + b, 0) / versionValues.length;
+                    totalRow += `<td><strong>${{totalValue.toFixed(2)}}</strong></td>`;
+                }} else {{
+                    totalRow += '<td>-</td>';
+                }}
+            }}
+            
+            // "All Versions" column for total row - average of averages
+            const allMethodVersionValues = [];
+            for (const method of methods) {{
+                for (const version of versions) {{
+                    const value = metricData[method]?.[version];
+                    if (value !== null && value !== undefined) {{
+                        allMethodVersionValues.push(value);
+                    }}
+                }}
+            }}
+            
+            if (allMethodVersionValues.length > 0) {{
+                const grandTotal = allMethodVersionValues.reduce((a, b) => a + b, 0) / allMethodVersionValues.length;
+                totalRow += `<td><strong>${{grandTotal.toFixed(2)}}</strong></td>`;
+            }} else {{
+                totalRow += '<td>-</td>';
+            }}
+            
+            totalRow += '</tr>';
+            rows += totalRow;
+            
+            tbody.innerHTML = rows;
+        }}
         
         // Function to update tag table header based on mode
         function updateTagTableHeader(mode) {{
@@ -5000,6 +5838,86 @@ class SimpleVersionComparisonDashboard:
         // Initialize rating distribution chart on page load
         if (document.getElementById('ratingDistributionChart')) {{
             updateRatingDistributionChart();
+        }}
+        
+        // Function to toggle cohort rows (expand/collapse)
+        function toggleCohort(cohort) {{
+            const detailRows = document.querySelectorAll(`tr.cohort-detail[data-cohort="${{cohort}}"]`);
+            const headerRow = document.querySelector(`tr.cohort-header[data-cohort="${{cohort}}"]`);
+            const icon = document.getElementById(`icon-${{cohort}}`);
+            
+            if (detailRows.length === 0 || !headerRow) return;
+            
+            const isExpanded = detailRows[0].style.display !== 'none';
+            
+            if (isExpanded) {{
+                // Collapse: hide detail rows
+                detailRows.forEach(row => {{
+                    row.style.display = 'none';
+                }});
+                if (icon) {{
+                    icon.className = 'fas fa-chevron-right cohort-icon';
+                }}
+            }} else {{
+                // Expand: show detail rows, keep header row visible
+                detailRows.forEach(row => {{
+                    row.style.display = 'table-row';
+                }});
+                if (icon) {{
+                    icon.className = 'fas fa-chevron-down cohort-icon';
+                }}
+            }}
+            
+            // Update display after toggle
+            updateGSBracketsTable();
+        }}
+        
+        // Function to update GS Brackets table (count vs percentage)
+        function updateGSBracketsTable() {{
+            const modeRadios = document.querySelectorAll('input[name="gsBracketsDisplayMode"]');
+            const selectedMode = modeRadios.length > 0 ? Array.from(modeRadios).find(r => r.checked)?.value || 'count' : 'count';
+            const isPercentage = selectedMode === 'percentage';
+            
+            // Process all rows (header, detail, and total rows)
+            const allRows = document.querySelectorAll('#gsBracketsTable tbody tr');
+            
+            allRows.forEach(row => {{
+                // Get all bracket cells with data-count (exclude the Total column which is the last cell)
+                const allCells = row.querySelectorAll('td');
+                const bracketCells = row.querySelectorAll('td[data-count]');
+                const totalCell = allCells[allCells.length - 1]; // Last cell is Total column
+                
+                if (!totalCell || bracketCells.length === 0) return;
+                
+                // Extract total from the last cell (Total column) - preserve the <strong> tag if present
+                const totalText = totalCell.textContent.trim();
+                const totalMatch = totalText.match(/\\d+/);
+                const total = totalMatch ? parseFloat(totalMatch[0]) : 0;
+                
+                bracketCells.forEach(cell => {{
+                    const count = parseFloat(cell.getAttribute('data-count')) || 0;
+                    
+                    if (isPercentage) {{
+                        if (total > 0) {{
+                            const percentage = (count / total * 100);
+                            cell.textContent = percentage.toFixed(1) + '%';
+                        }} else {{
+                            cell.textContent = '-';
+                        }}
+                    }} else {{
+                        // Show count
+                        cell.textContent = count;
+                    }}
+                }});
+                
+                // Total column should always show the actual total, never percentage
+                // (it's already correct, just make sure it's not modified)
+            }});
+        }}
+        
+        // Initialize table on page load
+        if (document.getElementById('gsBracketsTable')) {{
+            updateGSBracketsTable();
         }}
         
         function filterProgressionDataByParticipant(progressionDataView, progressionSessionData, participantIds) {{
@@ -6585,8 +7503,23 @@ class SimpleVersionComparisonDashboard:
         print("Calculating rating distribution...")
         rating_distribution = self.calculate_rating_distribution(sessions, messages_data)
         
+        # Load FLW activity data and calculate metrics
+        print("Loading FLW activity data...")
+        flw_activity_data = self.load_flw_activity_data()
+        
+        flw_activity_metrics = {}
+        if flw_activity_data:
+            print("Calculating FLW activity metrics...")
+            flw_activity_metrics['approved_visits_percentage'] = self.calculate_flw_activity_metrics(sessions, messages_data, flw_activity_data, 'approved_visits_percentage')
+            flw_activity_metrics['ecd_completed_intervention_percentage'] = self.calculate_flw_activity_metrics(sessions, messages_data, flw_activity_data, 'ecd_completed_intervention_percentage')
+            flw_activity_metrics['visits_before_gs1'] = self.calculate_flw_activity_metrics(sessions, messages_data, flw_activity_data, 'visits_before_gs1')
+            flw_activity_metrics['time_spent_learn'] = self.calculate_flw_activity_metrics(sessions, messages_data, flw_activity_data, 'time_spent_learn')
+            flw_activity_metrics['post_test_tries'] = self.calculate_flw_activity_metrics(sessions, messages_data, flw_activity_data, 'post_test_tries')
+            flw_activity_metrics['avg_distance_km_between_visits'] = self.calculate_flw_activity_metrics(sessions, messages_data, flw_activity_data, 'avg_distance_km_between_visits')
+            flw_activity_metrics['avg_minutes_between_visits'] = self.calculate_flw_activity_metrics(sessions, messages_data, flw_activity_data, 'avg_minutes_between_visits')
+        
         # Generate HTML
-        html_content = self.generate_dashboard_html(metrics, progression_data, rating_stats, progression_data_filtered, volume_data, volume_data_refrigerator, session_participant_map, volume_session_maps, progression_session_data, progression_session_data_filtered, sessions, messages_data, flw_breakdown, avg_gs_scores, tag_counts, tag_combination_data, today_yesterday_tendency, avg_rating_today, avg_rating_yesterday, tag_gs_scores, tag_combination_gs_data, rating_distribution)
+        html_content = self.generate_dashboard_html(metrics, progression_data, rating_stats, progression_data_filtered, volume_data, volume_data_refrigerator, session_participant_map, volume_session_maps, progression_session_data, progression_session_data_filtered, sessions, messages_data, flw_breakdown, avg_gs_scores, tag_counts, tag_combination_data, today_yesterday_tendency, avg_rating_today, avg_rating_yesterday, tag_gs_scores, tag_combination_gs_data, rating_distribution, flw_activity_metrics)
         
         # Save to file
         output_file = self.output_dir / "version_comparison_dashboard.html"
