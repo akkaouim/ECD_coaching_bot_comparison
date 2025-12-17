@@ -444,6 +444,181 @@ class SimpleVersionComparisonDashboard:
         """Check if session should be excluded (split or test session)"""
         return self.is_split_session(session, messages) or self.is_test_session(session)
     
+    def get_lowest_scoring_participants(self, gs_data: Dict[str, Dict], sessions: List[Dict], num_participants: int = 20, group_filter: str = 'B') -> Dict[str, Dict]:
+        """Get the N lowest scoring participants who have sessions in the relevant experiments
+        Only includes participants from the specified group (default: 'B' for coached group)
+        Returns: {participant_id: {gs_info, session_count, ...}}
+        """
+        # Create case-insensitive lookup for GS data
+        gs_data_lower = {}
+        for pid, info in gs_data.items():
+            gs_data_lower[pid.lower()] = info
+        
+        # Count sessions per participant
+        participant_session_counts = {}
+        for session in sessions:
+            participant_id = session.get('participant', {}).get('identifier', '')
+            if not participant_id:
+                continue
+            participant_session_counts[participant_id] = participant_session_counts.get(participant_id, 0) + 1
+        
+        # Get participants with GS scores and sessions, filtered by group
+        participants_with_scores = []
+        for participant_id, session_count in participant_session_counts.items():
+            # Get GS score (try exact match first, then case-insensitive)
+            gs_info = gs_data.get(participant_id) or gs_data_lower.get(participant_id.lower())
+            if not gs_info:
+                continue
+            
+            gs_score = gs_info.get('score')
+            if gs_score is None:
+                continue
+            
+            # Filter by group (case-insensitive)
+            group = gs_info.get('group', '').strip().upper()
+            if group_filter and group != group_filter.upper():
+                continue
+            
+            participants_with_scores.append({
+                'participant_id': participant_id,
+                'gs_score': gs_score,
+                'gs_info': gs_info,
+                'session_count': session_count
+            })
+        
+        # Sort by GS score (lowest first) and take top N
+        participants_with_scores.sort(key=lambda x: x['gs_score'])
+        lowest_participants = participants_with_scores[:num_participants]
+        
+        # Return as dictionary keyed by participant_id
+        result = {}
+        for p in lowest_participants:
+            result[p['participant_id']] = {
+                'gs_score': p['gs_score'],
+                'gs_info': p['gs_info'],
+                'session_count': p['session_count']
+            }
+        
+        return result
+    
+    def filter_sessions_by_participant_ids(self, sessions: List[Dict], participant_ids: set) -> List[Dict]:
+        """Filter sessions to only include those from specified participant IDs (case-insensitive)"""
+        participant_ids_lower = {pid.lower() for pid in participant_ids}
+        participant_ids_original = set(participant_ids)
+        
+        filtered_sessions = []
+        for session in sessions:
+            participant_id = session.get('participant', {}).get('identifier', '')
+            if not participant_id:
+                continue
+            
+            # Check both original and lowercase
+            if participant_id in participant_ids_original or participant_id.lower() in participant_ids_lower:
+                filtered_sessions.append(session)
+        
+        return filtered_sessions
+    
+    def calculate_low_scoring_users_stats(self, lowest_participants: Dict[str, Dict], gs_data: Dict[str, Dict]) -> Dict:
+        """Calculate statistics about the lowest scoring users per cohort
+        Returns: {
+            'by_cohort': {cohort: {'low_scoring_count': int, 'total_count': int, 'ratio': float}},
+            'total': {'low_scoring_count': int, 'total_count': int, 'ratio': float}
+        }
+        """
+        stats = {
+            'by_cohort': defaultdict(lambda: {'low_scoring_count': 0, 'total_count': 0}),
+            'total': {'low_scoring_count': 0, 'total_count': 0}
+        }
+        
+        # Count total participants with GS scores per cohort
+        for participant_id, gs_info in gs_data.items():
+            cohort = gs_info.get('cohort', '').strip()
+            score = gs_info.get('score')
+            
+            # Only count participants with valid GS scores
+            if score is None:
+                continue
+            
+            stats['total']['total_count'] += 1
+            if cohort:
+                stats['by_cohort'][cohort]['total_count'] += 1
+        
+        # Count lowest scoring participants per cohort
+        for participant_id, participant_data in lowest_participants.items():
+            gs_info = participant_data.get('gs_info', {})
+            cohort = gs_info.get('cohort', '').strip()
+            
+            stats['total']['low_scoring_count'] += 1
+            if cohort:
+                stats['by_cohort'][cohort]['low_scoring_count'] += 1
+        
+        # Calculate ratios
+        if stats['total']['total_count'] > 0:
+            stats['total']['ratio'] = (stats['total']['low_scoring_count'] / stats['total']['total_count']) * 100
+        else:
+            stats['total']['ratio'] = 0.0
+        
+        for cohort in stats['by_cohort']:
+            cohort_data = stats['by_cohort'][cohort]
+            if cohort_data['total_count'] > 0:
+                cohort_data['ratio'] = (cohort_data['low_scoring_count'] / cohort_data['total_count']) * 100
+            else:
+                cohort_data['ratio'] = 0.0
+        
+        # Convert defaultdict to regular dict
+        stats['by_cohort'] = dict(stats['by_cohort'])
+        
+        return stats
+    
+    def generate_lowest_scoring_users_table(self, lowest_participants: Dict[str, Dict], flw_activity_data: Dict = None) -> str:
+        """Generate HTML table showing details of the lowest scoring users"""
+        if not lowest_participants:
+            return "<tr><td colspan='6' class='text-center'>No data available</td></tr>"
+        
+        rows = ""
+        # Sort by GS score (lowest first)
+        sorted_participants = sorted(lowest_participants.items(), key=lambda x: x[1].get('gs_score', 999))
+        
+        for participant_id, participant_data in sorted_participants:
+            gs_info = participant_data.get('gs_info', {})
+            gs_score = participant_data.get('gs_score', 0)
+            session_count = participant_data.get('session_count', 0)
+            cohort = gs_info.get('cohort', '').strip() or '-'
+            group = gs_info.get('group', '').strip() or '-'
+            
+            # Get FLW activity data if available (flw_activity_data is a dict mapping participant_id to metrics)
+            additional_info_parts = []
+            if flw_activity_data:
+                # flw_activity_data structure: {participant_id: {metric_name: value}}
+                # Try exact match first, then case-insensitive
+                participant_flw = flw_activity_data.get(participant_id) or flw_activity_data.get(participant_id.lower())
+                if participant_flw:
+                    approved_visits = participant_flw.get('approved_visits_percentage')
+                    visits_before_gs1 = participant_flw.get('visits_before_gs1')
+                    post_test_tries = participant_flw.get('post_test_tries')
+                    
+                    if approved_visits is not None:
+                        additional_info_parts.append(f'Approved visits: {approved_visits:.1f}%')
+                    if visits_before_gs1 is not None:
+                        additional_info_parts.append(f'Visits before GS1: {visits_before_gs1:.1f}')
+                    if post_test_tries is not None:
+                        additional_info_parts.append(f'Post-test tries: {post_test_tries:.0f}')
+            
+            additional_info = ' | '.join(additional_info_parts) if additional_info_parts else '-'
+            
+            rows += f"""
+                <tr>
+                    <td><code>{participant_id}</code></td>
+                    <td>{cohort}</td>
+                    <td>{group}</td>
+                    <td><strong>{gs_score}</strong></td>
+                    <td>{session_count}</td>
+                    <td>{additional_info}</td>
+                </tr>
+            """
+        
+        return rows
+    
     def is_annotated_session(self, session: Dict, messages: List[Dict] = None) -> bool:
         """Check if session is annotated - excludes sessions with only coaching method tags"""
         # Collect all non-version tags from session and messages
@@ -752,6 +927,132 @@ class SimpleVersionComparisonDashboard:
         
         return median_results
 
+    def calculate_median_session_duration_by_method_and_version(self, sessions: List[Dict], messages_data: Dict, exclude_long_gaps: bool = False, gap_threshold_minutes: float = 20.0) -> Dict[str, Dict[str, float]]:
+        """Calculate median time between first and last message per session grouped by coaching method and version
+        
+        Args:
+            sessions: List of session dictionaries
+            messages_data: Dictionary mapping session_id to list of messages
+            exclude_long_gaps: If True, subtract gaps > gap_threshold_minutes between bot messages and participant responses
+            gap_threshold_minutes: Threshold in minutes for gaps to exclude (default: 20.0)
+        
+        Returns duration in minutes
+        """
+        method_version_durations = {}
+        
+        # Initialize structure
+        for method in ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown']:
+            method_version_durations[method] = {}
+            for version in ['V3', 'V4', 'V5', 'V6', 'Control']:
+                method_version_durations[method][version] = []
+        
+        # Collect durations for each method-version combination
+        for session in sessions:
+            session_id = session.get('id')
+            session_messages = messages_data.get(session_id, [])
+            
+            # Skip split sessions and test sessions
+            if self.should_exclude_session(session, session_messages):
+                continue
+            
+            if not session_messages or len(session_messages) < 2:
+                continue  # Need at least 2 messages to calculate duration
+            
+            # Calculate duration between first and last message
+            try:
+                first_message = session_messages[0]
+                last_message = session_messages[-1]
+                
+                first_time_str = first_message.get('created_at', '')
+                last_time_str = last_message.get('created_at', '')
+                
+                if not first_time_str or not last_time_str:
+                    continue
+                
+                first_time = datetime.fromisoformat(first_time_str.replace('Z', '+00:00'))
+                last_time = datetime.fromisoformat(last_time_str.replace('Z', '+00:00'))
+                
+                duration_minutes = (last_time - first_time).total_seconds() / 60
+                
+                if duration_minutes < 0:
+                    continue  # Skip invalid durations
+                
+                # If excluding long gaps, subtract gaps > threshold between bot messages and participant responses
+                if exclude_long_gaps:
+                    total_gap_to_subtract = 0.0
+                    for i in range(len(session_messages) - 1):
+                        current_message = session_messages[i]
+                        next_message = session_messages[i + 1]
+                        
+                        # Check if current message is from bot and next is from participant
+                        if current_message.get('role') == 'assistant' and next_message.get('role') == 'user':
+                            current_time_str = current_message.get('created_at', '')
+                            next_time_str = next_message.get('created_at', '')
+                            
+                            if current_time_str and next_time_str:
+                                try:
+                                    current_time = datetime.fromisoformat(current_time_str.replace('Z', '+00:00'))
+                                    next_time = datetime.fromisoformat(next_time_str.replace('Z', '+00:00'))
+                                    gap_minutes = (next_time - current_time).total_seconds() / 60
+                                    
+                                    if gap_minutes > gap_threshold_minutes:
+                                        total_gap_to_subtract += gap_minutes
+                                except (ValueError, AttributeError, TypeError):
+                                    pass  # Skip if we can't parse timestamps
+                    
+                    duration_minutes = max(0, duration_minutes - total_gap_to_subtract)
+                
+            except (ValueError, AttributeError, TypeError):
+                continue  # Skip if we can't parse timestamps
+            
+            # Determine version and method
+            version = None
+            detected_method = None
+            
+            # Check if this is a Control bot session first
+            control_config = self.coaching_bot_versions.get('Control bot', {})
+            if self.matches_version(session, control_config, session_messages):
+                detected_method = 'Unknown'
+                version = 'Control'
+            else:
+                # For coaching bots, detect method and version normally
+                detected_method = self.detect_coaching_method(session, session_messages)
+                
+                # Determine version
+                for version_name, version_config in self.coaching_bot_versions.items():
+                    if version_name != 'Control bot' and self.matches_version(session, version_config, session_messages):
+                        if 'V3' in version_name:
+                            version = 'V3'
+                        elif 'V4' in version_name:
+                            version = 'V4'
+                        elif 'V5' in version_name:
+                            version = 'V5'
+                        elif 'V6' in version_name:
+                            version = 'V6'
+                        break
+            
+            if detected_method and version:
+                method_version_durations[detected_method][version].append(duration_minutes)
+        
+        # Calculate medians
+        median_results = {}
+        for method in method_version_durations:
+            median_results[method] = {}
+            for version in method_version_durations[method]:
+                durations = method_version_durations[method][version]
+                if durations:
+                    durations.sort()
+                    n = len(durations)
+                    if n % 2 == 0:
+                        median = (durations[n//2 - 1] + durations[n//2]) / 2
+                    else:
+                        median = durations[n//2]
+                    median_results[method][version] = median
+                else:
+                    median_results[method][version] = 0.0
+        
+        return median_results
+    
     def calculate_median_messages_by_method_and_version(self, sessions: List[Dict], messages: Dict, exclude_outliers: bool = False) -> Dict[str, Dict[str, float]]:
         """Calculate median number of participant messages per session grouped by coaching method and version"""
         method_version_messages = {}
@@ -3538,6 +3839,404 @@ class SimpleVersionComparisonDashboard:
         
         return rows
     
+    def generate_comparison_method_table_rows(self, baseline_metrics: List[Dict], low_scoring_metrics: List[Dict], metric_type: str = 'refrigerator') -> str:
+        """Generate comparison table rows for method-based metrics (refrigerator, words, messages, rating)"""
+        rows = ""
+        
+        # Get all unique methods
+        all_methods = set()
+        for metric in baseline_metrics:
+            if metric_type == 'refrigerator':
+                method_data = metric.get('method_refrigerator_rates', {})
+            elif metric_type == 'words':
+                method_data = metric.get('median_words_by_method', {})
+            elif metric_type == 'messages':
+                method_data = metric.get('median_messages_by_method', {})
+            elif metric_type == 'rating':
+                method_data = metric.get('average_rating_by_method', {})
+            else:
+                method_data = {}
+            all_methods.update(method_data.keys())
+        
+        # Sort methods
+        method_order = ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown']
+        sorted_methods = [method for method in method_order if method in all_methods]
+        sorted_methods.extend([method for method in all_methods if method not in method_order])
+        
+        # Create lookup for low scoring metrics
+        low_scoring_lookup = {m['version_name']: m for m in (low_scoring_metrics or [])}
+        
+        for method in sorted_methods:
+            row = f"<tr><td><strong>{method}</strong></td>"
+            
+            # Baseline columns
+            baseline_values = []
+            for baseline_metric in baseline_metrics:
+                version_name = baseline_metric['version_name']
+                if metric_type == 'refrigerator':
+                    method_data = baseline_metric.get('method_refrigerator_rates', {}).get(method, {})
+                    if isinstance(method_data, dict):
+                        value = method_data.get('annotated', 0.0)
+                    else:
+                        value = method_data if isinstance(method_data, (int, float)) else 0.0
+                elif metric_type == 'words':
+                    method_data = baseline_metric.get('median_words_by_method', {}).get(method, {})
+                    if isinstance(method_data, dict):
+                        version_key = version_name.replace('Coaching bot ', '')
+                        if version_name == 'Control bot':
+                            value = method_data.get('Control', 0.0)
+                        else:
+                            value = method_data.get(version_key, 0.0)
+                    else:
+                        value = method_data if isinstance(method_data, (int, float)) else 0.0
+                elif metric_type == 'messages':
+                    method_data = baseline_metric.get('median_messages_by_method', {}).get(method, {})
+                    if isinstance(method_data, dict):
+                        version_key = version_name.replace('Coaching bot ', '')
+                        if version_name == 'Control bot':
+                            value = method_data.get('Control', 0.0)
+                        else:
+                            value = method_data.get(version_key, 0.0)
+                    else:
+                        value = method_data if isinstance(method_data, (int, float)) else 0.0
+                elif metric_type == 'rating':
+                    method_data = baseline_metric.get('average_rating_by_method', {}).get(method, 0.0)
+                    if isinstance(method_data, dict):
+                        # Extract rating for the specific version
+                        version_key = version_name.replace('Coaching bot ', '')
+                        if version_name == 'Control bot':
+                            value = method_data.get('Control', 0.0)
+                        else:
+                            value = method_data.get(version_key, 0.0)
+                    else:
+                        value = method_data if isinstance(method_data, (int, float)) else 0.0
+                else:
+                    value = 0.0
+                
+                if value > 0:
+                    if metric_type == 'refrigerator':
+                        row += f"<td>{value:.1f}%</td>"
+                    elif metric_type in ['words', 'messages']:
+                        row += f"<td>{value:.1f}</td>"
+                    else:
+                        row += f"<td>{value:.2f}</td>"
+                    baseline_values.append(value)
+                else:
+                    row += "<td>-</td>"
+            
+            # Baseline "All Versions" column
+            if baseline_values:
+                if metric_type == 'refrigerator':
+                    baseline_avg = sum(baseline_values) / len(baseline_values)
+                    row += f"<td style='font-weight: bold;'>{baseline_avg:.1f}%</td>"
+                elif metric_type in ['words', 'messages']:
+                    baseline_sorted = sorted(baseline_values)
+                    n = len(baseline_sorted)
+                    if n % 2 == 0:
+                        baseline_median = (baseline_sorted[n//2 - 1] + baseline_sorted[n//2]) / 2
+                    else:
+                        baseline_median = baseline_sorted[n//2]
+                    row += f"<td style='font-weight: bold;'>{baseline_median:.1f}</td>"
+                else:
+                    baseline_avg = sum(baseline_values) / len(baseline_values)
+                    row += f"<td style='font-weight: bold;'>{baseline_avg:.2f}</td>"
+            else:
+                row += "<td>-</td>"
+            
+            # Low scoring columns (only for versions that exist in low_scoring_metrics)
+            low_scoring_values = []
+            for low_scoring_metric in (low_scoring_metrics or []):
+                version_name = low_scoring_metric['version_name']
+                version_key = version_name.replace('Coaching bot ', '')
+                
+                if metric_type == 'refrigerator':
+                    method_data = low_scoring_metric.get('method_refrigerator_rates', {}).get(method, {})
+                    if isinstance(method_data, dict):
+                        value = method_data.get('annotated', 0.0)
+                    else:
+                        value = method_data if isinstance(method_data, (int, float)) else 0.0
+                elif metric_type == 'words':
+                    method_data = low_scoring_metric.get('median_words_by_method', {}).get(method, {})
+                    if isinstance(method_data, dict):
+                        version_key = version_name.replace('Coaching bot ', '')
+                        if version_name == 'Control bot':
+                            value = method_data.get('Control', 0.0)
+                        else:
+                            value = method_data.get(version_key, 0.0)
+                    else:
+                        value = method_data if isinstance(method_data, (int, float)) else 0.0
+                elif metric_type == 'messages':
+                    method_data = low_scoring_metric.get('median_messages_by_method', {}).get(method, {})
+                    if isinstance(method_data, dict):
+                        version_key = version_name.replace('Coaching bot ', '')
+                        if version_name == 'Control bot':
+                            value = method_data.get('Control', 0.0)
+                        else:
+                            value = method_data.get(version_key, 0.0)
+                    else:
+                        value = method_data if isinstance(method_data, (int, float)) else 0.0
+                elif metric_type == 'rating':
+                    method_data = low_scoring_metric.get('average_rating_by_method', {}).get(method, 0.0)
+                    if isinstance(method_data, dict):
+                        # Extract rating for the specific version
+                        if version_name == 'Control bot':
+                            value = method_data.get('Control', 0.0)
+                        else:
+                            value = method_data.get(version_key, 0.0)
+                    else:
+                        value = method_data if isinstance(method_data, (int, float)) else 0.0
+                else:
+                    value = 0.0
+                
+                if value > 0:
+                    if metric_type == 'refrigerator':
+                        row += f"<td>{value:.1f}%</td>"
+                    elif metric_type in ['words', 'messages']:
+                        row += f"<td>{value:.1f}</td>"
+                    else:
+                        row += f"<td>{value:.2f}</td>"
+                    low_scoring_values.append(value)
+                else:
+                    row += "<td>-</td>"
+            
+            # Low scoring "All Versions" column
+            if low_scoring_values:
+                if metric_type == 'refrigerator':
+                    low_avg = sum(low_scoring_values) / len(low_scoring_values)
+                    row += f"<td style='font-weight: bold;'>{low_avg:.1f}%</td>"
+                elif metric_type in ['words', 'messages']:
+                    low_sorted = sorted(low_scoring_values)
+                    n = len(low_sorted)
+                    if n % 2 == 0:
+                        low_median = (low_sorted[n//2 - 1] + low_sorted[n//2]) / 2
+                    else:
+                        low_median = low_sorted[n//2]
+                    row += f"<td style='font-weight: bold;'>{low_median:.1f}</td>"
+                else:
+                    low_avg = sum(low_scoring_values) / len(low_scoring_values)
+                    row += f"<td style='font-weight: bold;'>{low_avg:.2f}</td>"
+            else:
+                row += "<td>-</td>"
+            
+            row += "</tr>"
+            rows += row
+        
+        return rows
+    
+    def generate_median_session_duration_table_rows(self, metrics: List[Dict], exclude_gaps: bool = False) -> str:
+        """Generate table rows for median session duration by method and version
+        
+        Args:
+            metrics: List of metric dictionaries
+            exclude_gaps: If True, use the version that excludes long gaps (>20min)
+        """
+        # Get all unique methods across all versions
+        all_methods = set()
+        for metric in metrics:
+            if exclude_gaps:
+                median_duration_data = metric.get('median_session_duration_by_method_no_gaps', {})
+            else:
+                median_duration_data = metric.get('median_session_duration_by_method', {})
+            all_methods.update(median_duration_data.keys())
+
+        # Sort methods for consistent display
+        method_order = ['Scenario', 'Microlearning', 'Microlearning vaccines', 'Motivational interviewing', 'Visit check in', 'Unknown']
+        sorted_methods = [method for method in method_order if method in all_methods]
+        sorted_methods.extend([method for method in all_methods if method not in method_order])
+
+        # Store values for global calculation (per version and across all versions)
+        global_values = [[] for _ in metrics]
+        all_versions_values = []  # For "All Versions" column
+
+        rows = ""
+        for method in sorted_methods:
+            row = f"<tr><td><strong>{method}</strong></td>"
+            method_all_versions = []  # Collect values across all versions for this method
+            
+            for idx, metric in enumerate(metrics):
+                version_name = metric.get('version_name', '')
+                if exclude_gaps:
+                    median_duration_data = metric.get('median_session_duration_by_method_no_gaps', {})
+                else:
+                    median_duration_data = metric.get('median_session_duration_by_method', {})
+                method_duration = median_duration_data.get(method, 0.0)
+                
+                # Special handling for Control bot
+                if version_name == 'Control bot':
+                    if method == 'Unknown':
+                        # Show Control bot data only under Unknown
+                        if isinstance(method_duration, dict):
+                            control_duration = method_duration.get('Control', 0.0)
+                            if control_duration > 0:
+                                row += f"<td>{control_duration:.1f}</td>"
+                                global_values[idx].append(control_duration)
+                                method_all_versions.append(control_duration)
+                            else:
+                                row += f"<td>-</td>"
+                        else:
+                            if method_duration > 0:
+                                row += f"<td>{method_duration:.1f}</td>"
+                                global_values[idx].append(method_duration)
+                                method_all_versions.append(method_duration)
+                            else:
+                                row += f"<td>-</td>"
+                    else:
+                        # Show hyphen for specific coaching methods
+                        row += f"<td>-</td>"
+                else:
+                    # Regular handling for coaching bots
+                    if isinstance(method_duration, dict):
+                        # Get the value for this version
+                        version_key = version_name.replace('Coaching bot ', '')
+                        duration = method_duration.get(version_key, 0.0)
+                    else:
+                        duration = method_duration if isinstance(method_duration, (int, float)) else 0.0
+                    
+                    if duration > 0:
+                        row += f"<td>{duration:.1f}</td>"
+                        global_values[idx].append(duration)
+                        method_all_versions.append(duration)
+                    else:
+                        row += f"<td>-</td>"
+            
+            # Add "All Versions" column for this method
+            if method_all_versions:
+                method_all_versions_sorted = sorted(method_all_versions)
+                n = len(method_all_versions_sorted)
+                if n % 2 == 0:
+                    all_versions_median = (method_all_versions_sorted[n//2 - 1] + method_all_versions_sorted[n//2]) / 2
+                else:
+                    all_versions_median = method_all_versions_sorted[n//2]
+                row += f"<td style='font-weight: bold;'>{all_versions_median:.1f}</td>"
+                all_versions_values.append(all_versions_median)
+            else:
+                row += "<td>-</td>"
+                all_versions_values.append(0)
+            
+            row += "</tr>"
+            rows += row
+
+        # Add Total row
+        total_row = '<tr style="background-color: #f8f9fa;"><td><strong>Total (All Methods)</strong></td>'
+        for idx, values in enumerate(global_values):
+            if values:
+                values_sorted = sorted(values)
+                n = len(values_sorted)
+                if n % 2 == 0:
+                    global_median = (values_sorted[n//2 - 1] + values_sorted[n//2]) / 2
+                else:
+                    global_median = values_sorted[n//2]
+                total_row += f"<td style='font-weight: bold;'>{global_median:.1f}</td>"
+            else:
+                total_row += "<td>-</td>"
+        
+        # Add "All Versions" column for Total row
+        if all_versions_values:
+            all_versions_sorted = sorted([v for v in all_versions_values if v > 0])
+            if all_versions_sorted:
+                n = len(all_versions_sorted)
+                if n % 2 == 0:
+                    total_all_versions_median = (all_versions_sorted[n//2 - 1] + all_versions_sorted[n//2]) / 2
+                else:
+                    total_all_versions_median = all_versions_sorted[n//2]
+                total_row += f"<td style='font-weight: bold;'>{total_all_versions_median:.1f}</td>"
+            else:
+                total_row += "<td>-</td>"
+        else:
+            total_row += "<td>-</td>"
+        
+        total_row += "</tr>"
+        rows += total_row
+        
+        return rows
+    
+    def generate_low_scoring_users_stats_table(self, stats: Dict) -> str:
+        """Generate HTML table for low scoring users statistics by cohort"""
+        if not stats or not stats.get('by_cohort'):
+            return "<tr><td colspan='4' class='text-center'>No data available</td></tr>"
+        
+        rows = ""
+        cohorts = sorted([c for c in stats['by_cohort'].keys() if c])
+        
+        for cohort in cohorts:
+            cohort_data = stats['by_cohort'][cohort]
+            low_count = cohort_data.get('low_scoring_count', 0)
+            total_count = cohort_data.get('total_count', 0)
+            ratio = cohort_data.get('ratio', 0.0)
+            
+            rows += f"""
+                <tr>
+                    <td><strong>{cohort}</strong></td>
+                    <td>{low_count}</td>
+                    <td>{total_count}</td>
+                    <td>{ratio:.1f}%</td>
+                </tr>
+            """
+        
+        # Add total row
+        total_data = stats.get('total', {})
+        total_low = total_data.get('low_scoring_count', 0)
+        total_all = total_data.get('total_count', 0)
+        total_ratio = total_data.get('ratio', 0.0)
+        
+        rows += f"""
+            <tr style="background-color: #f8f9fa;">
+                <td><strong>Total</strong></td>
+                <td style="font-weight: bold;">{total_low}</td>
+                <td style="font-weight: bold;">{total_all}</td>
+                <td style="font-weight: bold;">{total_ratio:.1f}%</td>
+            </tr>
+        """
+        
+        return rows
+    
+    def generate_comparison_summary_table_rows(self, baseline_metrics: List[Dict], low_scoring_metrics: List[Dict]) -> str:
+        """Generate comparison table rows showing baseline vs low scoring users side by side"""
+        rows = ""
+        
+        # Create lookup for low scoring metrics by version name
+        low_scoring_lookup = {m['version_name']: m for m in (low_scoring_metrics or [])}
+        
+        # Get all versions from baseline
+        for baseline_metric in baseline_metrics:
+            version_name = baseline_metric['version_name']
+            low_scoring_metric = low_scoring_lookup.get(version_name)
+            
+            if low_scoring_metric:
+                low_sessions = low_scoring_metric['total_sessions']
+                low_annotated = low_scoring_metric['annotated_sessions']
+                low_refrigerator = low_scoring_metric['refrigerator_examples_percent']
+                low_words = low_scoring_metric['median_human_words_per_session']
+                low_rating = low_scoring_metric['average_session_rating']
+            else:
+                low_sessions = 0
+                low_annotated = 0
+                low_refrigerator = 0.0
+                low_words = 0.0
+                low_rating = 0.0
+            
+            rows += f"""
+                <tr>
+                    <td rowspan="2"><strong>{version_name}</strong></td>
+                    <td><strong>Baseline (All Users)</strong></td>
+                    <td>{baseline_metric['total_sessions']}</td>
+                    <td>{baseline_metric['annotated_sessions']}</td>
+                    <td>{baseline_metric['refrigerator_examples_percent']:.1f}%</td>
+                    <td>{baseline_metric['median_human_words_per_session']:.1f}</td>
+                    <td>{baseline_metric['average_session_rating']:.2f}</td>
+                </tr>
+                <tr>
+                    <td><strong>Low Scoring (20 Lowest, Group B)</strong></td>
+                    <td>{low_sessions}</td>
+                    <td>{low_annotated}</td>
+                    <td>{low_refrigerator:.1f}%</td>
+                    <td>{low_words:.1f}</td>
+                    <td>{low_rating:.2f}</td>
+                </tr>
+            """
+        
+        return rows
+    
     def generate_avg_gs_table_rows(self, avg_gs_scores: Dict, metrics: List[Dict]) -> str:
         """Generate HTML rows for average GS score table"""
         if not avg_gs_scores:
@@ -3749,7 +4448,7 @@ class SimpleVersionComparisonDashboard:
         
         return rows_with_all_versions + total_row
     
-    def generate_dashboard_html(self, metrics: List[Dict], progression_data: Dict = None, rating_stats: Dict = None, progression_data_filtered: Dict = None, volume_data: Dict = None, volume_data_refrigerator: Dict = None, session_participant_map: Dict = None, volume_session_maps: Dict = None, progression_session_data: List[Dict] = None, progression_session_data_filtered: List[Dict] = None, all_sessions: List[Dict] = None, all_messages_data: Dict = None, flw_breakdown: Dict = None, avg_gs_scores: Dict = None, tag_counts: Dict = None, tag_combination_data: Dict = None, today_yesterday_tendency: Dict = None, avg_rating_today: Dict = None, avg_rating_yesterday: Dict = None, tag_gs_scores: Dict = None, tag_combination_gs_data: Dict = None, rating_distribution: Dict = None, flw_activity_metrics: Dict = None) -> str:
+    def generate_dashboard_html(self, metrics: List[Dict], progression_data: Dict = None, rating_stats: Dict = None, progression_data_filtered: Dict = None, volume_data: Dict = None, volume_data_refrigerator: Dict = None, session_participant_map: Dict = None, volume_session_maps: Dict = None, progression_session_data: List[Dict] = None, progression_session_data_filtered: List[Dict] = None, all_sessions: List[Dict] = None, all_messages_data: Dict = None, flw_breakdown: Dict = None, avg_gs_scores: Dict = None, tag_counts: Dict = None, tag_combination_data: Dict = None, today_yesterday_tendency: Dict = None, avg_rating_today: Dict = None, avg_rating_yesterday: Dict = None, tag_gs_scores: Dict = None, tag_combination_gs_data: Dict = None, rating_distribution: Dict = None, flw_activity_metrics: Dict = None, flw_activity_data: Dict = None, low_scoring_metrics: List[Dict] = None, low_scoring_users_stats: Dict = None, lowest_participants: Dict = None, low_scoring_progression_data: Dict = None, low_scoring_progression_data_filtered: Dict = None, low_scoring_volume_data: Dict = None, low_scoring_rating_stats: Dict = None, low_scoring_median_words_by_method: Dict = None, low_scoring_median_messages_by_method: Dict = None, low_scoring_median_words_by_method_filtered: Dict = None, low_scoring_median_messages_by_method_filtered: Dict = None, low_scoring_tag_counts: Dict = None, low_scoring_tag_gs_scores: Dict = None, low_scoring_flw_activity_metrics: Dict = None) -> str:
         """Generate complete dashboard HTML"""
         # Generate summary table
         table_rows = ""
@@ -4187,6 +4886,9 @@ class SimpleVersionComparisonDashboard:
                         <button class="nav-link" id="gold-standard-tab" data-bs-toggle="tab" data-bs-target="#gold-standard" type="button" role="tab" aria-controls="gold-standard" aria-selected="false">Gold Standard</button>
                     </li>
                     <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="low-scoring-tab" data-bs-toggle="tab" data-bs-target="#low-scoring" type="button" role="tab" aria-controls="low-scoring" aria-selected="false">20 Lowest Scoring Users (Group B)</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
                         <button class="nav-link" id="flw-activity-tab" data-bs-toggle="tab" data-bs-target="#flw-activity" type="button" role="tab" aria-controls="flw-activity" aria-selected="false">FLW Activity</button>
                     </li>
                     <li class="nav-item" role="presentation">
@@ -4539,10 +5241,48 @@ class SimpleVersionComparisonDashboard:
                                         <div class="chart-container" style="position: relative; height: 400px;">
                                             <canvas id="progressionChart"></canvas>
                                         </div>
-                                    </div>
-                                </div>
-                            </div>
                         </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Median Session Duration Table -->
+            <div class="row mt-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Median Time Between First and Last Message per Session by Method and Version</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <label class="form-label">Calculation Mode:</label>
+                                <div class="btn-group" role="group">
+                                    <input type="radio" class="btn-check" name="sessionDurationMode" id="sessionDurationModeTotal" value="total" checked onchange="updateSessionDurationTable()">
+                                    <label class="btn btn-outline-primary" for="sessionDurationModeTotal">Total Duration</label>
+                                    <input type="radio" class="btn-check" name="sessionDurationMode" id="sessionDurationModeNoGaps" value="no_gaps" onchange="updateSessionDurationTable()">
+                                    <label class="btn btn-outline-primary" for="sessionDurationModeNoGaps">Exclude Long Gaps (>20min)</label>
+                                </div>
+                                <small class="form-text text-muted d-block mt-2">Total Duration: Time from first to last message. Exclude Long Gaps: Subtracts gaps greater than 20 minutes between bot messages and participant responses (removes breaks, transportation, sleep time).</small>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-striped table-hover" id="sessionDurationTable">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th>Method</th>
+                                            {''.join([f'<th>{metric["version_name"]}</th>' for metric in metrics])}
+                                            <th>All Versions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="sessionDurationTableBody">
+                                        <!-- Table content will be updated by JavaScript -->
+                                    </tbody>
+                                </table>
+                            </div>
+                            <small class="text-muted">This table shows the median time (in minutes) between the first and last message in each session, grouped by coaching method and bot version.</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
                     </div>
                     
                     <!-- Session Volume Tab -->
@@ -4677,7 +5417,8 @@ class SimpleVersionComparisonDashboard:
                             </div>
                         </div>
                     </div>
-                    
+
+
                     <!-- FLW Activity Tab -->
                     <div class="tab-pane fade" id="flw-activity" role="tabpanel" aria-labelledby="flw-activity-tab">
                         <div class="row mt-4">
@@ -5001,6 +5742,257 @@ class SimpleVersionComparisonDashboard:
                     </div>
                 </div>
             </div>
+        </div>
+        
+        <!-- Low Scoring Users Tab -->
+        <div class="tab-pane fade" id="low-scoring" role="tabpanel" aria-labelledby="low-scoring-tab">
+            <div class="row mt-4">
+                            <div class="col-12">
+                                <div class="alert alert-info">
+                                    <h5 class="alert-heading">
+                                        <i class="fas fa-info-circle me-2"></i>
+                                        20 Lowest Scoring Users Analysis (Group B - Coached)
+                                    </h5>
+                                    <p>This tab presents all dashboard indicators filtered to the 20 participants with the lowest Gold Standard (GS) scores from <strong>Group B (coached group)</strong> who have sessions with one of the coaching bots (V3, V4, V5, or V6), allowing comparison with the baseline (all users). Note: Group A participants are excluded as they were assigned to the control bot.</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+            <!-- Lowest Scoring Users Details Table -->
+            <div class="row mt-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>20 Lowest Scoring Users (Group B) - Participant Details</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-striped table-hover">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th>Participant ID</th>
+                                            <th>Cohort</th>
+                                            <th>Group</th>
+                                            <th>GS Score</th>
+                                            <th># Sessions</th>
+                                            <th>Additional Info</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {self.generate_lowest_scoring_users_table(lowest_participants, flw_activity_data) if lowest_participants else '<tr><td colspan="6" class="text-center">No data available</td></tr>'}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <small class="text-muted">This table lists the 20 participants from Group B (coached) with the lowest GS scores who have sessions with one of the coaching bots. Additional info includes approved visits percentage, visits before GS1, and post-test tries when available.</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Low Scoring Users Statistics Table -->
+            <div class="row mt-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Low Scoring Users by Cohort</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-striped table-hover">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th>Cohort</th>
+                                            <th>Low Scoring Users (20 Lowest)</th>
+                                            <th>Total Users with GS Score</th>
+                                            <th>Ratio (%)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {self.generate_low_scoring_users_stats_table(low_scoring_users_stats) if low_scoring_users_stats else '<tr><td colspan="4" class="text-center">No GS data available</td></tr>'}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <small class="text-muted">This table shows the distribution of the 20 lowest scoring Group B participants across cohorts, along with the ratio compared to the total number of participants with GS scores available.</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Summary Metrics Comparison -->
+            <div class="row mt-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Summary Metrics Comparison</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-striped table-hover">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th>Coaching Bot Version</th>
+                                            <th>Group</th>
+                                            <th># Sessions</th>
+                                            <th># Annotated Sessions</th>
+                                            <th>Refrigeration Examples (%)</th>
+                                            <th>Median Human Words per Session</th>
+                                            <th>Average Session Rating</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {self.generate_comparison_summary_table_rows(metrics, low_scoring_metrics) if low_scoring_metrics else '<tr><td colspan="7" class="text-center">No low scoring user data available</td></tr>'}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <small class="text-muted">This table compares summary metrics between baseline (all users) and the 20 lowest scoring Group B users side by side for easy comparison.</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Refrigerator Rate by Method Comparison -->
+            <div class="row mt-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Refrigerator Rate by Method - Comparison</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <label class="form-label">Calculation Mode:</label>
+                                <div class="btn-group" role="group">
+                                    <input type="radio" class="btn-check" name="lowScoringRefrigeratorMode" id="lowScoringRefrigeratorModeAnnotated" value="annotated" checked onchange="updateLowScoringRefrigeratorTable()">
+                                    <label class="btn btn-outline-primary" for="lowScoringRefrigeratorModeAnnotated">Annotated</label>
+                                    <input type="radio" class="btn-check" name="lowScoringRefrigeratorMode" id="lowScoringRefrigeratorModeExplicit" value="explicit" onchange="updateLowScoringRefrigeratorTable()">
+                                    <label class="btn btn-outline-primary" for="lowScoringRefrigeratorModeExplicit">Explicit</label>
+                                </div>
+                                <small class="form-text text-muted d-block mt-2">Annotated: Refrigerator examples / All annotated sessions. Explicit: Refrigerator examples / (Refrigerator + Not Refrigerator) explicitly tagged sessions.</small>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-striped table-hover" id="lowScoringRefrigeratorTable">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th rowspan="2">Method</th>
+                                            <th colspan="{len(metrics) + 1 if metrics else 1}">Baseline (All Users)</th>
+                                            <th colspan="{len(low_scoring_metrics) + 1 if low_scoring_metrics else 1}">Low Scoring (20 Lowest, Group B)</th>
+                                        </tr>
+                                        <tr>
+                                            {''.join([f'<th>{m["version_name"]}</th>' for m in (metrics or [])])}
+                                            <th>All Versions</th>
+                                            {''.join([f'<th>{m["version_name"]}</th>' for m in (low_scoring_metrics or [])])}
+                                            <th>All Versions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="lowScoringRefrigeratorTableBody">
+                                        {self.generate_comparison_method_table_rows(metrics, low_scoring_metrics, 'refrigerator') if metrics and low_scoring_metrics else '<tr><td colspan="' + str((len(metrics) if metrics else 0) + 1 + (len(low_scoring_metrics) if low_scoring_metrics else 0) + 1 + 1) + '" class="text-center">No data available</td></tr>'}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Median Words by Method Comparison -->
+            <div class="row mt-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Median Words per Session by Method - Comparison</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-striped table-hover">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th rowspan="2">Method</th>
+                                            <th colspan="{len(metrics) + 1 if metrics else 1}">Baseline (All Users)</th>
+                                            <th colspan="{len(low_scoring_metrics) + 1 if low_scoring_metrics else 1}">Low Scoring (20 Lowest, Group B)</th>
+                                        </tr>
+                                        <tr>
+                                            {''.join([f'<th>{m["version_name"]}</th>' for m in (metrics or [])])}
+                                            <th>All Versions</th>
+                                            {''.join([f'<th>{m["version_name"]}</th>' for m in (low_scoring_metrics or [])])}
+                                            <th>All Versions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {self.generate_comparison_method_table_rows(metrics, low_scoring_metrics, 'words') if metrics and low_scoring_metrics else '<tr><td colspan="' + str((len(metrics) if metrics else 0) + 1 + (len(low_scoring_metrics) if low_scoring_metrics else 0) + 1 + 1) + '" class="text-center">No data available</td></tr>'}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Median Messages by Method Comparison -->
+            <div class="row mt-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Median Messages per Session by Method - Comparison</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-striped table-hover">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th rowspan="2">Method</th>
+                                            <th colspan="{len(metrics) + 1 if metrics else 1}">Baseline (All Users)</th>
+                                            <th colspan="{len(low_scoring_metrics) + 1 if low_scoring_metrics else 1}">Low Scoring (20 Lowest, Group B)</th>
+                                        </tr>
+                                        <tr>
+                                            {''.join([f'<th>{m["version_name"]}</th>' for m in (metrics or [])])}
+                                            <th>All Versions</th>
+                                            {''.join([f'<th>{m["version_name"]}</th>' for m in (low_scoring_metrics or [])])}
+                                            <th>All Versions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {self.generate_comparison_method_table_rows(metrics, low_scoring_metrics, 'messages') if metrics and low_scoring_metrics else '<tr><td colspan="' + str((len(metrics) if metrics else 0) + 1 + (len(low_scoring_metrics) if low_scoring_metrics else 0) + 1 + 1) + '" class="text-center">No data available</td></tr>'}
+                                    </tbody>
+                                </table>
+                            </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Average Rating by Method Comparison -->
+            <div class="row mt-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Average Rating by Method - Comparison</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-striped table-hover">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th rowspan="2">Method</th>
+                                            <th colspan="{len(metrics) + 1 if metrics else 1}">Baseline (All Users)</th>
+                                            <th colspan="{len(low_scoring_metrics) + 1 if low_scoring_metrics else 1}">Low Scoring (20 Lowest, Group B)</th>
+                                        </tr>
+                                        <tr>
+                                            {''.join([f'<th>{m["version_name"]}</th>' for m in (metrics or [])])}
+                                            <th>All Versions</th>
+                                            {''.join([f'<th>{m["version_name"]}</th>' for m in (low_scoring_metrics or [])])}
+                                            <th>All Versions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {self.generate_comparison_method_table_rows(metrics, low_scoring_metrics, 'rating') if metrics and low_scoring_metrics else '<tr><td colspan="' + str((len(metrics) if metrics else 0) + 1 + (len(low_scoring_metrics) if low_scoring_metrics else 0) + 1 + 1) + '" class="text-center">No data available</td></tr>'}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+                    </div>
         </div>
     </div>
 
@@ -5721,6 +6713,10 @@ class SimpleVersionComparisonDashboard:
         const averageRatingTableRowsRefrigerator = {json.dumps(rating_table_rows_refrigerator)};
         const sessionCountTableRows = {json.dumps(volume_summary_table_rows)};
         const sessionCountTableRowsRefrigerator = {json.dumps(volume_summary_table_rows_refrigerator)};
+        
+        // Session duration table rows (with and without gap exclusion)
+        const sessionDurationTableRows = {json.dumps(self.generate_median_session_duration_table_rows(metrics, exclude_gaps=False))};
+        const sessionDurationTableRowsNoGaps = {json.dumps(self.generate_median_session_duration_table_rows(metrics, exclude_gaps=True))};
         
         let progressionChart = null;
         let volumeChart = null;
@@ -7229,6 +8225,23 @@ class SimpleVersionComparisonDashboard:
             return progressionData;
         }}
         
+        // Update session duration table based on mode
+        function updateSessionDurationTable() {{
+            const mode = document.querySelector('input[name="sessionDurationMode"]:checked')?.value || 'total';
+            const tableBody = document.getElementById('sessionDurationTableBody');
+            
+            if (!tableBody) {{
+                console.warn('sessionDurationTableBody not found');
+                return;
+            }}
+            
+            if (mode === 'no_gaps') {{
+                tableBody.innerHTML = sessionDurationTableRowsNoGaps;
+            }} else {{
+                tableBody.innerHTML = sessionDurationTableRows;
+            }}
+        }}
+        
         // Initialize chart on page load
         document.addEventListener('DOMContentLoaded', function() {{
             window.currentParticipantFilter = [];  // Initialize participant filter
@@ -7237,6 +8250,8 @@ class SimpleVersionComparisonDashboard:
             // Initialize refrigerator calculation mode
             updateRefrigeratorCalculationMode();
             updateTablesForRefrigeratorFilter();  // Initialize tables
+            // Initialize session duration table
+            updateSessionDurationTable();
             
             // Add event listeners for date inputs to auto-apply filters
             const startDateInput = document.getElementById('startDate');
@@ -7313,6 +8328,11 @@ class SimpleVersionComparisonDashboard:
         median_messages_by_method = self.calculate_median_messages_by_method_and_version(sessions, messages_data, exclude_outliers=False)
         median_messages_by_method_filtered = self.calculate_median_messages_by_method_and_version(sessions, messages_data, exclude_outliers=True)
         
+        # Calculate median session duration by method and version (both with and without gap exclusion)
+        print("Calculating median session duration by method and version...")
+        median_session_duration_by_method = self.calculate_median_session_duration_by_method_and_version(sessions, messages_data, exclude_long_gaps=False)
+        median_session_duration_by_method_no_gaps = self.calculate_median_session_duration_by_method_and_version(sessions, messages_data, exclude_long_gaps=True, gap_threshold_minutes=20.0)
+        
         # Filter sessions to only refrigerator examples for refrigerator-filtered median calculations
         refrigerator_sessions = []
         for session in sessions:
@@ -7369,6 +8389,30 @@ class SimpleVersionComparisonDashboard:
             metric['median_messages_by_method'] = filtered_messages
             metric['median_words_by_method_filtered'] = filtered_words_outlier
             metric['median_messages_by_method_filtered'] = filtered_messages_outlier
+            
+            # Add median session duration data (both with and without gap exclusion)
+            filtered_duration = {}
+            filtered_duration_no_gaps = {}
+            for method in median_session_duration_by_method:
+                if version_name == 'Control bot':
+                    if method == 'Unknown':
+                        # Store as dict with 'Control' key to match structure
+                        control_duration = median_session_duration_by_method[method].get('Control', 0.0)
+                        control_duration_no_gaps = median_session_duration_by_method_no_gaps[method].get('Control', 0.0)
+                        filtered_duration[method] = {'Control': control_duration} if control_duration > 0 else {}
+                        filtered_duration_no_gaps[method] = {'Control': control_duration_no_gaps} if control_duration_no_gaps > 0 else {}
+                    else:
+                        filtered_duration[method] = {}
+                        filtered_duration_no_gaps[method] = {}
+                else:
+                    version_key = version_name.replace('Coaching bot ', '')
+                    # Store as dict with version key to match structure
+                    version_duration = median_session_duration_by_method[method].get(version_key, 0.0)
+                    version_duration_no_gaps = median_session_duration_by_method_no_gaps[method].get(version_key, 0.0)
+                    filtered_duration[method] = {version_key: version_duration} if version_duration > 0 else {}
+                    filtered_duration_no_gaps[method] = {version_key: version_duration_no_gaps} if version_duration_no_gaps > 0 else {}
+            metric['median_session_duration_by_method'] = filtered_duration
+            metric['median_session_duration_by_method_no_gaps'] = filtered_duration_no_gaps
             
             # Add median data to refrigerator_filtered metric
             if 'refrigerator_filtered' in metric:
@@ -7518,8 +8562,142 @@ class SimpleVersionComparisonDashboard:
             flw_activity_metrics['avg_distance_km_between_visits'] = self.calculate_flw_activity_metrics(sessions, messages_data, flw_activity_data, 'avg_distance_km_between_visits')
             flw_activity_metrics['avg_minutes_between_visits'] = self.calculate_flw_activity_metrics(sessions, messages_data, flw_activity_data, 'avg_minutes_between_visits')
         
+        # Calculate metrics for the 20 lowest scoring users
+        low_scoring_metrics = None
+        low_scoring_users_stats = None
+        lowest_participants = None
+        low_scoring_progression_data = None
+        low_scoring_progression_data_filtered = None
+        low_scoring_volume_data = None
+        low_scoring_rating_stats = None
+        low_scoring_median_words_by_method = None
+        low_scoring_median_messages_by_method = None
+        low_scoring_median_words_by_method_filtered = None
+        low_scoring_median_messages_by_method_filtered = None
+        low_scoring_tag_counts = None
+        low_scoring_tag_gs_scores = None
+        low_scoring_flw_activity_metrics = None
+        
+        if gs_data:
+            print("Identifying 20 lowest scoring users from Group B (coached)...")
+            # Get the 20 lowest scoring participants from Group B who have sessions
+            lowest_participants = self.get_lowest_scoring_participants(gs_data, sessions, num_participants=20, group_filter='B')
+            print(f"  Found {len(lowest_participants)} lowest scoring participants from Group B")
+            
+            if lowest_participants:
+                # Calculate statistics
+                low_scoring_users_stats = self.calculate_low_scoring_users_stats(lowest_participants, gs_data)
+                
+                # Filter sessions to only these participants
+                participant_ids = set(lowest_participants.keys())
+                low_scoring_sessions = self.filter_sessions_by_participant_ids(sessions, participant_ids)
+                print(f"  Found {len(low_scoring_sessions)} sessions from lowest scoring users (out of {len(sessions)} total)")
+            
+            if low_scoring_sessions:
+                # Calculate metrics for each version (low scoring users only)
+                low_scoring_metrics = []
+                for version_name, version_config in self.coaching_bot_versions.items():
+                    print(f"  Calculating metrics for {version_name} (low scoring users)...")
+                    
+                    # Filter sessions for this version
+                    version_sessions = []
+                    for session in low_scoring_sessions:
+                        session_id = session.get('id')
+                        session_messages = messages_data.get(session_id, [])
+                        if self.matches_version(session, version_config, session_messages):
+                            version_sessions.append(session)
+                    
+                    if version_sessions:
+                        # Calculate metrics
+                        metric = self.calculate_metrics_for_version(version_name, version_sessions, messages_data, refrigerator_only=False)
+                        metric_refrigerator = self.calculate_metrics_for_version(version_name, version_sessions, messages_data, refrigerator_only=True)
+                        metric['refrigerator_filtered'] = metric_refrigerator
+                        low_scoring_metrics.append(metric)
+                
+                # Calculate median words and messages for low scoring users
+                print("  Calculating median words and messages for low scoring users...")
+                low_scoring_median_words_by_method = self.calculate_median_words_by_method_and_version(low_scoring_sessions, messages_data, exclude_outliers=False)
+                low_scoring_median_words_by_method_filtered = self.calculate_median_words_by_method_and_version(low_scoring_sessions, messages_data, exclude_outliers=True)
+                low_scoring_median_messages_by_method = self.calculate_median_messages_by_method_and_version(low_scoring_sessions, messages_data, exclude_outliers=False)
+                low_scoring_median_messages_by_method_filtered = self.calculate_median_messages_by_method_and_version(low_scoring_sessions, messages_data, exclude_outliers=True)
+                
+                # Add median data to each metric
+                for metric in low_scoring_metrics:
+                    version_name = metric.get('version_name', '')
+                    filtered_words = {}
+                    filtered_messages = {}
+                    filtered_words_outlier = {}
+                    filtered_messages_outlier = {}
+                    
+                    for method in low_scoring_median_words_by_method:
+                        filtered_words[method] = {}
+                        filtered_messages[method] = {}
+                        filtered_words_outlier[method] = {}
+                        filtered_messages_outlier[method] = {}
+                        
+                        if version_name == 'Control bot':
+                            if method == 'Unknown':
+                                filtered_words[method] = low_scoring_median_words_by_method[method].get('Control', {})
+                                filtered_messages[method] = low_scoring_median_messages_by_method[method].get('Control', {})
+                                filtered_words_outlier[method] = low_scoring_median_words_by_method_filtered[method].get('Control', {})
+                                filtered_messages_outlier[method] = low_scoring_median_messages_by_method_filtered[method].get('Control', {})
+                            else:
+                                filtered_words[method] = {}
+                                filtered_messages[method] = {}
+                                filtered_words_outlier[method] = {}
+                                filtered_messages_outlier[method] = {}
+                        else:
+                            version_key = version_name.replace('Coaching bot ', '')
+                            filtered_words[method] = low_scoring_median_words_by_method[method].get(version_key, {})
+                            filtered_messages[method] = low_scoring_median_messages_by_method[method].get(version_key, {})
+                            filtered_words_outlier[method] = low_scoring_median_words_by_method_filtered[method].get(version_key, {})
+                            filtered_messages_outlier[method] = low_scoring_median_messages_by_method_filtered[method].get(version_key, {})
+                    
+                    metric['median_words_by_method'] = filtered_words
+                    metric['median_messages_by_method'] = filtered_messages
+                    metric['median_words_by_method_filtered'] = filtered_words_outlier
+                    metric['median_messages_by_method_filtered'] = filtered_messages_outlier
+                
+                # Calculate progression data for low scoring users
+                print("  Calculating progression data for low scoring users...")
+                low_scoring_progression_data, _ = self.calculate_session_progression_data(low_scoring_sessions, messages_data, exclude_outliers=False, return_session_data=True)
+                low_scoring_progression_data_filtered, _ = self.calculate_session_progression_data(low_scoring_sessions, messages_data, exclude_outliers=True, return_session_data=True)
+                
+                # Calculate rating statistics for low scoring users
+                print("  Calculating rating statistics for low scoring users...")
+                low_scoring_rating_stats = self.calculate_rating_statistics(low_scoring_sessions, messages_data)
+                
+                # Calculate volume data for low scoring users
+                print("  Calculating volume data for low scoring users...")
+                low_scoring_volume_data = {
+                    'day': self.calculate_session_volume_by_time(low_scoring_sessions, messages_data, aggregation='day', refrigerator_only=False),
+                    'week': self.calculate_session_volume_by_time(low_scoring_sessions, messages_data, aggregation='week', refrigerator_only=False),
+                    'month': self.calculate_session_volume_by_time(low_scoring_sessions, messages_data, aggregation='month', refrigerator_only=False)
+                }
+                
+                # Calculate tag counts for low scoring users
+                print("  Calculating tag counts for low scoring users...")
+                low_scoring_tag_counts = self.calculate_tag_counts_by_version_and_method(low_scoring_sessions, messages_data)
+                
+                # Calculate tag GS scores for low scoring users
+                if gs_data:
+                    print("  Calculating tag GS scores for low scoring users...")
+                    low_scoring_tag_gs_scores = self.calculate_tag_gs_scores_by_version_and_method(low_scoring_sessions, messages_data, gs_data)
+                
+                # Calculate FLW activity metrics for low scoring users
+                if flw_activity_data:
+                    print("  Calculating FLW activity metrics for low scoring users...")
+                    low_scoring_flw_activity_metrics = {}
+                    low_scoring_flw_activity_metrics['approved_visits_percentage'] = self.calculate_flw_activity_metrics(low_scoring_sessions, messages_data, flw_activity_data, 'approved_visits_percentage')
+                    low_scoring_flw_activity_metrics['ecd_completed_intervention_percentage'] = self.calculate_flw_activity_metrics(low_scoring_sessions, messages_data, flw_activity_data, 'ecd_completed_intervention_percentage')
+                    low_scoring_flw_activity_metrics['visits_before_gs1'] = self.calculate_flw_activity_metrics(low_scoring_sessions, messages_data, flw_activity_data, 'visits_before_gs1')
+                    low_scoring_flw_activity_metrics['time_spent_learn'] = self.calculate_flw_activity_metrics(low_scoring_sessions, messages_data, flw_activity_data, 'time_spent_learn')
+                    low_scoring_flw_activity_metrics['post_test_tries'] = self.calculate_flw_activity_metrics(low_scoring_sessions, messages_data, flw_activity_data, 'post_test_tries')
+                    low_scoring_flw_activity_metrics['avg_distance_km_between_visits'] = self.calculate_flw_activity_metrics(low_scoring_sessions, messages_data, flw_activity_data, 'avg_distance_km_between_visits')
+                    low_scoring_flw_activity_metrics['avg_minutes_between_visits'] = self.calculate_flw_activity_metrics(low_scoring_sessions, messages_data, flw_activity_data, 'avg_minutes_between_visits')
+        
         # Generate HTML
-        html_content = self.generate_dashboard_html(metrics, progression_data, rating_stats, progression_data_filtered, volume_data, volume_data_refrigerator, session_participant_map, volume_session_maps, progression_session_data, progression_session_data_filtered, sessions, messages_data, flw_breakdown, avg_gs_scores, tag_counts, tag_combination_data, today_yesterday_tendency, avg_rating_today, avg_rating_yesterday, tag_gs_scores, tag_combination_gs_data, rating_distribution, flw_activity_metrics)
+        html_content = self.generate_dashboard_html(metrics, progression_data, rating_stats, progression_data_filtered, volume_data, volume_data_refrigerator, session_participant_map, volume_session_maps, progression_session_data, progression_session_data_filtered, sessions, messages_data, flw_breakdown, avg_gs_scores, tag_counts, tag_combination_data, today_yesterday_tendency, avg_rating_today, avg_rating_yesterday, tag_gs_scores, tag_combination_gs_data, rating_distribution, flw_activity_metrics, flw_activity_data, low_scoring_metrics, low_scoring_users_stats, lowest_participants, low_scoring_progression_data, low_scoring_progression_data_filtered, low_scoring_volume_data, low_scoring_rating_stats, low_scoring_median_words_by_method, low_scoring_median_messages_by_method, low_scoring_median_words_by_method_filtered, low_scoring_median_messages_by_method_filtered, low_scoring_tag_counts, low_scoring_tag_gs_scores, low_scoring_flw_activity_metrics)
         
         # Save to file
         output_file = self.output_dir / "version_comparison_dashboard.html"
